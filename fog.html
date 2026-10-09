@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="世界迷雾 —— 走过的城市，正在点亮。">
+  <title>世界迷雾 · Nailcui</title>
+  <style>
+    :root {
+      --bg: #0a1420;
+      --ink: #e8f6f3;
+      --acc: #4df0d8;
+      --acc2: #8cf7e8;
+      --glass: rgba(10, 22, 34, 0.72);
+      --line: rgba(77, 240, 216, 0.3);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+    }
+
+    #stage { position: relative; width: 100%; height: 100vh; height: 100dvh; }
+    #map { position: absolute; inset: 0; background: var(--bg); }
+    /* 特效画布：盖在底图之上、标记之下；迷雾/脉冲两种样式在此绘制 */
+    #fx { position: absolute; inset: 0; z-index: 100; pointer-events: none; }
+
+    /* ---------- HUD ---------- */
+    .hud { position: absolute; z-index: 1100; }
+    .hud-top {
+      top: 0; left: 0; right: 0;
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 0;
+      pointer-events: none;
+    }
+    .back {
+      display: inline-flex; align-items: center; height: 32px; padding: 0 14px;
+      border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.16);
+      background: var(--glass); color: var(--ink); text-decoration: none;
+      font-size: 13px; backdrop-filter: blur(8px); pointer-events: auto;
+      transition: border-color 0.25s, color 0.25s; white-space: nowrap;
+    }
+    .back:hover { border-color: var(--line); color: var(--acc2); }
+    .brand h1 {
+      font-size: 17px; font-weight: 600; letter-spacing: 0.35em;
+      text-shadow: 0 0 18px rgba(77, 240, 216, 0.35);
+    }
+    .brand p { font-size: 11px; opacity: 0.62; margin-top: 3px; letter-spacing: 0.12em; }
+    .stats {
+      margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .stats span {
+      display: inline-flex; align-items: center; height: 26px; padding: 0 11px;
+      border-radius: 999px; background: var(--glass);
+      border: 1px solid rgba(255, 255, 255, 0.12); font-size: 12px;
+      color: #cfeee8; backdrop-filter: blur(8px); white-space: nowrap;
+    }
+    .stats b { color: var(--acc2); font-weight: 600; margin: 0 2px; }
+
+    .mode-switch {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+      left: 50%; transform: translateX(-50%);
+      display: flex; gap: 2px; padding: 4px; border-radius: 999px;
+      background: var(--glass); border: 1px solid rgba(255, 255, 255, 0.14);
+      backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+    .mode-switch button {
+      appearance: none; border: 0; background: transparent; color: #bfe6df;
+      font-size: 13px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+      transition: background 0.25s, color 0.25s, box-shadow 0.25s;
+      white-space: nowrap; letter-spacing: 0.05em; font-family: inherit;
+    }
+    .mode-switch button:hover { color: var(--acc2); }
+    .mode-switch button.active {
+      background: rgba(77, 240, 216, 0.16); color: var(--acc2);
+      box-shadow: inset 0 0 0 1px var(--line), 0 0 18px rgba(77, 240, 216, 0.18);
+    }
+
+    .credit {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 5px);
+      left: 50%; transform: translateX(-50%);
+      font-size: 10px; color: rgba(210, 235, 230, 0.42); letter-spacing: 0.06em;
+      pointer-events: none; white-space: nowrap;
+    }
+
+    /* ---------- 地图标记（高德模式）---------- */
+    .city-label {
+      font-size: 11px; font-weight: 500; color: #f2fffc; letter-spacing: 0.08em;
+      text-shadow: 0 0 6px rgba(77, 240, 216, 0.9), 0 1px 3px rgba(0, 0, 0, 0.9);
+      transform: translateY(-13px); white-space: nowrap; pointer-events: none;
+    }
+    .city-hotspot {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .city-hotspot i {
+      width: 5px; height: 5px; border-radius: 50%; background: #eafffb;
+      box-shadow: 0 0 10px 2px rgba(77, 240, 216, 0.85);
+      opacity: 0.95; transition: transform 0.2s, background 0.2s;
+    }
+    .city-hotspot:hover i, .city-hotspot.active i { transform: scale(1.7); background: #fff; }
+
+    /* ---------- 城市卡片 ---------- */
+    .city-card {
+      position: relative; width: min(280px, 80vw);
+      background: linear-gradient(160deg, rgba(12, 26, 40, 0.95), rgba(8, 18, 28, 0.95));
+      border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 15px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(77, 240, 216, 0.12);
+      backdrop-filter: blur(10px); font-size: 13px; color: var(--ink);
+    }
+    .cc-close {
+      position: absolute; top: 6px; right: 8px; width: 26px; height: 26px;
+      border: 0; background: transparent; color: #9dc4bd; font-size: 18px;
+      line-height: 1; cursor: pointer; border-radius: 8px;
+    }
+    .cc-close:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+    .cc-kicker { font-size: 11px; letter-spacing: 0.18em; color: var(--acc); opacity: 0.9; margin-bottom: 6px; }
+    .cc-name {
+      font-size: 20px; font-weight: 600; letter-spacing: 0.12em; margin-bottom: 8px;
+      text-shadow: 0 0 14px rgba(77, 240, 216, 0.35);
+    }
+    .cc-date { font-size: 12px; color: #bfe0da; }
+    .cc-note { font-size: 12px; color: #93b8b1; line-height: 1.6; margin-top: 7px; }
+
+    /* 演示模式卡片容器（真实地图模式由高德 InfoWindow 承载） */
+    #cardLayer { position: absolute; inset: 0; z-index: 1300; pointer-events: none; }
+    .demo-card-wrap {
+      position: absolute; transform: translate(-50%, -100%);
+      pointer-events: auto;
+    }
+    #tooltip {
+      position: absolute; z-index: 1350; pointer-events: none;
+      transform: translate(-50%, -160%);
+      background: rgba(8, 18, 28, 0.92); border: 1px solid var(--line);
+      color: #dffef7; font-size: 12px; padding: 5px 10px; border-radius: 8px;
+      white-space: nowrap; letter-spacing: 0.04em;
+      opacity: 0; transition: opacity 0.15s;
+    }
+    #tooltip.show { opacity: 1; }
+    #tooltip b { color: var(--acc2); font-weight: 600; }
+
+    /* ---------- 配置引导 ---------- */
+    .guide {
+      position: absolute; inset: 0; z-index: 2000;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+      background: radial-gradient(120% 120% at 50% 0%, rgba(14, 30, 46, 0.9), rgba(6, 12, 20, 0.97));
+      backdrop-filter: blur(6px);
+    }
+    .guide[hidden] { display: none; }
+    .guide-card {
+      max-width: 460px; width: 100%;
+      background: rgba(10, 22, 34, 0.88); border: 1px solid var(--line);
+      border-radius: 18px; padding: 26px 26px 22px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+    .guide-card h2 {
+      font-size: 19px; letter-spacing: 0.3em; margin-bottom: 6px;
+      text-shadow: 0 0 16px rgba(77, 240, 216, 0.4);
+    }
+    .guide-card .sub { font-size: 12px; color: #93b8b1; margin-bottom: 16px; line-height: 1.6; }
+    .guide-card ol { margin: 0 0 16px 18px; font-size: 13px; color: #cfeee8; line-height: 1.95; }
+    .guide-card a { color: var(--acc2); }
+    .guide-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 38px; padding: 0 20px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--acc2);
+      background: rgba(77, 240, 216, 0.08); cursor: pointer;
+      font-size: 13px; letter-spacing: 0.08em; text-decoration: none; font-family: inherit;
+    }
+    .btn.primary { background: rgba(77, 240, 216, 0.18); box-shadow: 0 0 18px rgba(77, 240, 216, 0.2); }
+    .btn:hover { background: rgba(77, 240, 216, 0.26); }
+
+    /* ---------- 移动端 ---------- */
+    @media (max-width: 640px) {
+      .hud-top { gap: 8px; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); }
+      .back { height: 30px; padding: 0 11px; font-size: 12px; }
+      .brand h1 { font-size: 15px; letter-spacing: 0.28em; }
+      .brand p { display: none; }
+      .stats span { height: 24px; padding: 0 9px; font-size: 11px; }
+      .stats .chip-extra { display: none; }
+      .mode-switch { max-width: calc(100vw - 24px); }
+      .mode-switch button { padding: 8px 13px; font-size: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body data-mode="neon">
+  <div id="stage">
+    <div id="map"></div>
+    <canvas id="fx"></canvas>
+
+    <header class="hud hud-top">
+      <a class="back" href="./index.html">‹ 返回</a>
+      <div class="brand">
+        <h1>世界迷雾</h1>
+        <p id="subtitle">走过的城市，正在点亮</p>
+      </div>
+      <div class="stats" id="stats"></div>
+    </header>
+
+    <div class="hud mode-switch" id="modeSwitch" role="tablist" aria-label="点亮样式切换">
+      <button type="button" data-mode="neon" role="tab">✦ 霓虹城区</button>
+      <button type="button" data-mode="fog" role="tab">◈ 迷雾探索</button>
+      <button type="button" data-mode="pulse" role="tab">✧ 星火脉冲</button>
+    </div>
+
+    <div class="hud credit" id="credit">底图与行政区划数据 © 高德地图</div>
+    <div id="cardLayer"><div id="tooltip"></div></div>
+
+    <div class="guide" id="setupGuide" hidden>
+      <div class="guide-card">
+        <h2>世界迷雾</h2>
+        <p class="sub" id="guideMsg">尚未配置高德地图 Key，先体验演示模式，或按以下步骤免费开通（约 3 分钟）。</p>
+        <ol>
+          <li>注册 / 登录高德开放平台 <a href="https://lbs.amap.com/" target="_blank" rel="noopener">lbs.amap.com</a>（个人免费）</li>
+          <li>控制台 → 应用管理 → 创建应用 → 添加 Key，服务平台选「Web端(JS API)」</li>
+          <li>复制 Key 与安全密钥（securityJsCode）</li>
+          <li>编辑仓库中的 <code>fog-data.js</code>，填入 <code>FOG_CONFIG.amap</code>，刷新本页</li>
+        </ol>
+        <div class="guide-actions">
+          <button type="button" class="btn primary" id="demoBtn">✧ 进入演示模式</button>
+          <a class="btn" href="https://console.amap.com/dev/key/app" target="_blank" rel="noopener">前往创建 Key</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./fog-data.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    /* ================= 基础数据 ================= */
+    var MODES = ['neon', 'fog', 'pulse'];
+    var cfg = window.FOG_CONFIG || {};
+    var amapCfg = cfg.amap || {};
+    var CITIES = (window.FOG_CITIES || []).slice().sort(function (a, b) {
+      return String(a.date || '9999').localeCompare(String(b.date || '9999'));
+    });
+    var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var stage = document.getElementById('stage');
+    var mapDiv = document.getElementById('map');
+    var fx = document.getElementById('fx');
+    var ctx = fx.getContext('2d');
+    var statsEl = document.getElementById('stats');
+    var subtitle = document.getElementById('subtitle');
+    var creditEl = document.getElementById('credit');
+    var cardLayer = document.getElementById('cardLayer');
+    var tooltip = document.getElementById('tooltip');
+    var guide = document.getElementById('setupGuide');
+    var guideMsg = document.getElementById('guideMsg');
+
+    var map = null;            // AMap.Map
+    var infoWindow = null;     // AMap.InfoWindow
+    var districtSearch = null;
+    var mode = MODES.indexOf(cfg.style) >= 0 ? cfg.style : 'neon';
+    try {
+      var saved = localStorage.getItem('fog:mode');
+      if (saved && MODES.indexOf(saved) >= 0) mode = saved;
+    } catch (e) { /* 隐私模式下 localStorage 不可用 */ }
+
+    var dpr = 1;
+    var rafId = 0;
+    var activeCity = null;
+    var demo = { active: false, k: 1, fx0: 0, fy0: 0, latK: Math.cos(35.5 * Math.PI / 180) };
+    // 演示模式的抽象底图范围（仅经纬网示意，不绘制任何行政区划）
+    var DEMO_BBOX = { lng0: 72.5, lng1: 135.5, lat0: 17.5, lat1: 54.5 };
+
+    /* ================= 工具函数 ================= */
+    function hasCoords(c) { return isFinite(c.lng) && isFinite(c.lat); }
+
+    // 经纬度 → 容器 CSS 像素
+    function cssXY(lng, lat) {
+      if (demo.active) {
+        return {
+          x: demo.fx0 + (lng - DEMO_BBOX.lng0) * demo.latK * demo.k,
+          y: demo.fy0 + (DEMO_BBOX.lat1 - lat) * demo.k
+        };
+      }
+      if (!map) return null;
+      var p = map.lngLatToContainer([lng, lat]);
+      if (!p) return null;
+      var x = typeof p.x === 'number' ? p.x : p.getX();
+      var y = typeof p.y === 'number' ? p.y : p.getY();
+      return { x: x, y: y };
+    }
+
+    function canvasXY(lng, lat) {
+      var p = cssXY(lng, lat);
+      if (!p) return null;
+      return { x: p.x * dpr, y: p.y * dpr };
+    }
+
+    function daysSince(dateStr) {
+      var t = Date.parse(dateStr + 'T00:00:00');
+      if (isNaN(t)) return null;
+      return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+    }
+
+    function sizeFx() {
+      var w = stage.clientWidth, h = stage.clientHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      fx.width = Math.max(1, Math.round(w * dpr));
+      fx.height = Math.max(1, Math.round(h * dpr));
+      fx.style.width = w + 'px';
+      fx.style.height = h + 'px';
+    }
+
+    function cityPath(c) {
+      var path = new Path2D();
+      var rings = c._rings || [];
+      for (var i = 0; i < rings.length; i++) {
+        var ring = rings[i];
+        for (var j = 0; j < ring.length; j++) {
+          var p = canvasXY(ring[j][0], ring[j][1]);
+          if (!p) break;
+          if (j === 0) path.moveTo(p.x, p.y); else path.lineTo(p.x, p.y);
+        }
+        path.closePath();
+      }
+      return path;
+    }
+
+    /* ================= HUD ================= */
+    function buildStats() {
+      var provs = {}, latest = null;
+      CITIES.forEach(function (c) {
+        provs[c.province || '未知'] = 1;
+        if (c.date && (!latest || c.date > latest)) latest = c.date;
+      });
+      statsEl.innerHTML = '';
+      addChip('已点亮 <b>' + CITIES.length + '</b> 城');
+      addChip('<b>' + Object.keys(provs).length + '</b> 省级地区', 'chip-extra');
+      if (latest) addChip('最近 <b>' + latest + '</b>', 'chip-extra');
+      function addChip(html, extra) {
+        var s = document.createElement('span');
+        if (extra) s.className = extra;
+        s.innerHTML = html;
+        statsEl.appendChild(s);
+      }
+    }
+
+    function buildModeSwitch() {
+      var box = document.getElementById('modeSwitch');
+      var btns = box.querySelectorAll('button');
+      Array.prototype.forEach.call(btns, function (b) {
+        b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
+      });
+      syncModeButtons();
+    }
+    function syncModeButtons() {
+      var btns = document.getElementById('modeSwitch').querySelectorAll('button');
+      Array.prototype.forEach.call(btns, function (b) {
+        var on = b.getAttribute('data-mode') === mode;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+
+    /* ================= 渲染循环 ================= */
+    function needRaf() {
+      if (reduceMotion) return false;
+      if (demo.active) return true;          // 演示模式所有样式都在画布上，持续动画
+      return mode === 'pulse';               // 真实地图：仅脉冲需要逐帧
+    }
+
+    function loop(t) {
+      rafId = 0;
+      draw(t || 0);
+      if (needRaf()) rafId = requestAnimationFrame(loop);
+    }
+
+    function scheduleRedraw() {
+      if (!rafId) rafId = requestAnimationFrame(loop);
+    }
+
+    function draw(t) {
+      ctx.clearRect(0, 0, fx.width, fx.height);
+      if (demo.active) drawDemoBg();
+      if (mode === 'fog') drawFog();
+      else if (mode === 'pulse') drawPulse(t);
+      else if (demo.active) drawDemoNeon();
+    }
+
+    // —— 样式一：迷雾探索（暗幕 + 城区形状挖空 + 发光边界）——
+    function drawFog() {
+      ctx.fillStyle = 'rgba(6, 10, 16, 0.93)';
+      ctx.fillRect(0, 0, fx.width, fx.height);
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      CITIES.forEach(function (c) {
+        var p = hasCoords(c) && canvasXY(c.lng, c.lat);
+        if (p) {
+          var r = 72 * dpr;
+          var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+          g.addColorStop(0, 'rgba(0,0,0,0.95)');
+          g.addColorStop(0.7, 'rgba(0,0,0,0.5)');
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+        }
+        if (c._rings && c._rings.length) {
+          var path = cityPath(c);
+          ctx.shadowColor = '#000'; ctx.shadowBlur = 16 * dpr;
+          ctx.fillStyle = '#000'; ctx.fill(path, 'evenodd');
+          ctx.lineWidth = 9 * dpr; ctx.strokeStyle = '#000'; ctx.stroke(path);
+        }
+      });
+      ctx.restore();
+
+      // 点亮边界的青色微光
+      ctx.save();
+      ctx.shadowColor = 'rgba(96, 245, 224, 0.9)';
+      ctx.shadowBlur = 10 * dpr;
+      ctx.strokeStyle = 'rgba(110, 246, 226, 0.32)';
+      ctx.lineWidth = 1.3 * dpr;
+      CITIES.forEach(function (c) {
+        if (c._rings && c._rings.length) ctx.stroke(cityPath(c));
+      });
+      ctx.restore();
+
+      // 拨开迷雾后的城市微光与名称（演示模式无底图细节，靠光斑表达「点亮」）
+      ctx.save();
+      CITIES.forEach(function (c) {
+        if (!hasCoords(c)) return;
+        var p = canvasXY(c.lng, c.lat);
+        if (!p) return;
+        var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 24 * dpr);
+        g.addColorStop(0, 'rgba(77, 240, 216, 0.4)');
+        g.addColorStop(1, 'rgba(77, 240, 216, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 24 * dpr, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#eafffb';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * dpr, 0, Math.PI * 2); ctx.fill();
+        if (demo.active) {
+          ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
+          ctx.fillStyle = '#d9f7f0';
+          ctx.font = (11 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, p.x, p.y + 20 * dpr);
+          ctx.shadowBlur = 0;
+        }
+      });
+      ctx.restore();
+    }
+
+    // —— 样式二：星火脉冲（城市中心光点 + 扩散波纹）——
+    function drawPulse(t) {
+      var T = reduceMotion ? 1200 : t;
+      CITIES.forEach(function (c) {
+        if (!hasCoords(c)) return;
+        var p = canvasXY(c.lng, c.lat);
+        if (!p) return;
+
+        var halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 16 * dpr);
+        halo.addColorStop(0, 'rgba(77, 240, 216, 0.5)');
+        halo.addColorStop(1, 'rgba(77, 240, 216, 0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 16 * dpr, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = '#d9fff8';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.6 * dpr, 0, Math.PI * 2); ctx.fill();
+
+        for (var k = 0; k < 2; k++) {
+          var ph = ((T / 3000) + k * 0.5) % 1;
+          var r = (6 + ph * 30) * dpr;
+          ctx.strokeStyle = 'rgba(90, 240, 220, ' + ((1 - ph) * 0.55).toFixed(3) + ')';
+          ctx.lineWidth = 1.6 * dpr;
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        if (demo.active) {
+          ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
+          ctx.fillStyle = '#d9f7f0';
+          ctx.font = (11 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(c.name, p.x, p.y + 22 * dpr);
+          ctx.shadowBlur = 0;
+        }
+      });
+    }
+
+    // —— 演示模式的「霓虹城区」：无边界数据，用光斑代替 ——
+    function drawDemoNeon() {
+      CITIES.forEach(function (c) {
+        if (!hasCoords(c)) return;
+        var p = canvasXY(c.lng, c.lat);
+        if (!p) return;
+        var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26 * dpr);
+        g.addColorStop(0, 'rgba(37, 217, 201, 0.5)');
+        g.addColorStop(1, 'rgba(37, 217, 201, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 26 * dpr, 0, Math.PI * 2); ctx.fill();
+
+        ctx.strokeStyle = 'rgba(157, 247, 232, 0.85)';
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.shadowColor = 'rgba(77, 240, 216, 0.9)';
+        ctx.shadowBlur = 8 * dpr;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 7 * dpr, 0, Math.PI * 2); ctx.stroke();
+
+        ctx.fillStyle = '#eafffb';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.4 * dpr, 0, Math.PI * 2); ctx.fill();
+
+        ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
+        ctx.fillStyle = '#eafdfa';
+        ctx.font = (11 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(c.name, p.x, p.y + 24 * dpr);
+        ctx.shadowBlur = 0;
+      });
+    }
+
+    // 演示模式抽象底图：暗色渐变 + 经纬网（不含任何行政区划边界）
+    function drawDemoBg() {
+      var w = fx.width, h = fx.height;
+      var g = ctx.createRadialGradient(w / 2, h * 0.42, 0, w / 2, h * 0.42, Math.max(w, h) * 0.75);
+      g.addColorStop(0, '#0e1c2b');
+      g.addColorStop(1, '#070d14');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = 'rgba(120, 200, 220, 0.06)';
+      ctx.lineWidth = 1;
+      var lng, lat, a, b;
+      for (lng = DEMO_BBOX.lng0; lng <= DEMO_BBOX.lng1; lng += 5) {
+        a = canvasXY(lng, DEMO_BBOX.lat1); b = canvasXY(lng, DEMO_BBOX.lat0);
+        if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      }
+      for (lat = DEMO_BBOX.lat0; lat <= DEMO_BBOX.lat1; lat += 5) {
+        a = canvasXY(DEMO_BBOX.lng0, lat); b = canvasXY(DEMO_BBOX.lng1, lat);
+        if (a && b) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      }
+    }
+
+    /* ================= 样式切换 ================= */
+    function setMode(m) {
+      if (MODES.indexOf(m) < 0) return;
+      mode = m;
+      try { localStorage.setItem('fog:mode', m); } catch (e) {}
+      document.body.setAttribute('data-mode', m);
+      syncModeButtons();
+
+      if (map) {
+        var neon = m === 'neon';
+        CITIES.forEach(function (c) {
+          if (neon && c._rings && !c._polys) buildPolys(c); // 迷雾模式期间加载好的边界，切回时补建
+          if (c._polys) c._polys.forEach(function (p) { neon ? p.show() : p.hide(); });
+          if (c._label) (m === 'fog') ? c._label.hide() : c._label.show();
+        });
+      }
+      closeCard();
+      hideTooltip();
+      scheduleRedraw();
+    }
+
+    /* ================= 城市卡片 / 悬停提示 ================= */
+    function buildCardEl(c) {
+      var card = document.createElement('div');
+      card.className = 'city-card';
+
+      var close = document.createElement('button');
+      close.type = 'button'; close.className = 'cc-close';
+      close.setAttribute('aria-label', '关闭'); close.textContent = '×';
+      close.addEventListener('click', function (e) { e.stopPropagation(); closeCard(); });
+      card.appendChild(close);
+
+      var idx = CITIES.indexOf(c) + 1;
+      var kick = document.createElement('div');
+      kick.className = 'cc-kicker';
+      kick.textContent = '第 ' + idx + ' 站 · ' + (c.province || '');
+      card.appendChild(kick);
+
+      var name = document.createElement('div');
+      name.className = 'cc-name'; name.textContent = c.name;
+      card.appendChild(name);
+
+      var date = document.createElement('div');
+      date.className = 'cc-date';
+      var days = daysSince(c.date);
+      date.textContent = c.date
+        ? '点亮于 ' + c.date + (days === null ? '' : ' · 已照亮 ' + days + ' 天')
+        : '点亮日期待补充';
+      card.appendChild(date);
+
+      if (c.note) {
+        var note = document.createElement('p');
+        note.className = 'cc-note'; note.textContent = c.note;
+        card.appendChild(note);
+      }
+      return card;
+    }
+
+    function markActive(c) {
+      CITIES.forEach(function (x) {
+        if (x._hotEl) x._hotEl.classList.toggle('active', x === c);
+      });
+    }
+
+    function openCard(c) {
+      if (activeCity === c) return;
+      closeCard();
+      hideTooltip();
+      activeCity = c;
+      markActive(c);
+      var ll = hasCoords(c) ? [c.lng, c.lat] : (c._center || null);
+      if (!ll) return;
+      if (demo.active) {
+        var p = cssXY(ll[0], ll[1]);
+        if (!p) return;
+        var wrap = document.createElement('div');
+        wrap.className = 'demo-card-wrap';
+        wrap.appendChild(buildCardEl(c));
+        cardLayer.appendChild(wrap);
+        var w = Math.min(280, stage.clientWidth * 0.8);
+        wrap.style.left = Math.min(Math.max(p.x, w / 2 + 8), stage.clientWidth - w / 2 - 8) + 'px';
+        wrap.style.top = Math.max(p.y - 14, 120) + 'px';
+      } else if (map) {
+        if (!infoWindow) {
+          infoWindow = new AMap.InfoWindow({
+            isCustom: true,
+            anchor: 'bottom-center',
+            offset: new AMap.Pixel(0, -16)
+          });
+        }
+        infoWindow.setContent(buildCardEl(c));
+        infoWindow.open(map, ll);
+      }
+    }
+
+    function closeCard() {
+      activeCity = null;
+      markActive(null);
+      if (infoWindow) infoWindow.close();
+      var wraps = cardLayer.querySelectorAll('.demo-card-wrap');
+      Array.prototype.forEach.call(wraps, function (n) { n.parentNode.removeChild(n); });
+    }
+
+    function showTooltip(c) {
+      var p = hasCoords(c) && cssXY(c.lng, c.lat);
+      if (!p) return;
+      tooltip.innerHTML = '';
+      var b = document.createElement('b'); b.textContent = c.name;
+      tooltip.appendChild(b);
+      tooltip.appendChild(document.createTextNode(c.date ? ' · ' + c.date : ''));
+      tooltip.style.left = p.x + 'px';
+      tooltip.style.top = (p.y - 14) + 'px';
+      tooltip.classList.add('show');
+    }
+    function hideTooltip() { tooltip.classList.remove('show'); }
+
+    function hitCity(clientX, clientY) {
+      var rect = stage.getBoundingClientRect();
+      var x = clientX - rect.left, y = clientY - rect.top;
+      var best = null, bestD = 20;
+      CITIES.forEach(function (c) {
+        if (!hasCoords(c)) return;
+        var p = cssXY(c.lng, c.lat);
+        if (!p) return;
+        var d = Math.hypot(p.x - x, p.y - y);
+        if (d < bestD) { bestD = d; best = c; }
+      });
+      return best;
+    }
+
+    /* ================= 高德模式 ================= */
+    function loadAMap() {
+      window._AMapSecurityConfig = { securityJsCode: amapCfg.securityJsCode || '' };
+      var s = document.createElement('script');
+      s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + encodeURIComponent(amapCfg.key) +
+        '&plugin=AMap.DistrictSearch';
+      s.onerror = function () { showGuide('高德地图脚本加载失败，请检查网络或 Key 配置。'); };
+      s.onload = function () {
+        if (window.AMap && AMap.Map) {
+          try { initAMap(); }
+          catch (e) { console.error(e); showGuide('地图初始化失败：' + e.message); }
+        } else {
+          showGuide('高德地图未能初始化（Key 可能无效或配额不足）。');
+        }
+      };
+      document.head.appendChild(s);
+    }
+
+    function initAMap() {
+      map = new AMap.Map('map', {
+        mapStyle: 'amap://styles/dark',
+        viewMode: '2D',
+        zoom: 4.6,
+        center: [112.8, 32.4],
+        zooms: [3, 16],
+        dragRotateEnable: false,
+        touchRotate: false
+      });
+      ['mapmove', 'zoomchange', 'rotate', 'resize', 'complete'].forEach(function (ev) {
+        map.on(ev, scheduleRedraw);
+      });
+      map.on('click', function (e) {
+        var ll = e.lnglat;
+        var lng = typeof ll.lng === 'number' ? ll.lng : ll.getLng();
+        var lat = typeof ll.lat === 'number' ? ll.lat : ll.getLat();
+        var c = hitByLngLat(lng, lat);
+        if (c) openCard(c); else closeCard();
+      });
+
+      districtSearch = new AMap.DistrictSearch({ level: 'city', subdistrict: 0, extensions: 'all' });
+
+      CITIES.forEach(function (c) { addMarkers(c); });
+
+      var pending = CITIES.length, fitDone = false;
+      function maybeFit() {
+        if (fitDone) return;
+        fitDone = true;
+        var polys = [];
+        CITIES.forEach(function (c) { if (c._polys) c._polys.forEach(function (p) { polys.push(p); }); });
+        if (polys.length) { try { map.setFitView(polys, false, [60, 60, 60, 60]); } catch (e) {} }
+        scheduleRedraw();
+      }
+      setTimeout(maybeFit, 4500);
+
+      CITIES.forEach(function (c, i) {
+        setTimeout(function () {
+          loadBoundary(c, function (d) {
+            if (d) {
+              c._rings = d.boundaries;
+              var ctr = d.center;
+              if (ctr) {
+                c._center = [
+                  typeof ctr.lng === 'number' ? ctr.lng : ctr.getLng(),
+                  typeof ctr.lat === 'number' ? ctr.lat : ctr.getLat()
+                ];
+              }
+              if (mode === 'neon') buildPolys(c);
+            }
+            if (--pending === 0) maybeFit();
+            scheduleRedraw();
+          });
+        }, i * 150);
+      });
+    }
+
+    function hitByLngLat(lng, lat) {
+      var p = cssXY(lng, lat);
+      if (!p) return null;
+      var best = null, bestD = 24;
+      CITIES.forEach(function (c) {
+        if (!hasCoords(c)) return;
+        var q = cssXY(c.lng, c.lat);
+        if (!q) return;
+        var d = Math.hypot(q.x - p.x, q.y - p.y);
+        if (d < bestD) { bestD = d; best = c; }
+      });
+      return best;
+    }
+
+    function loadBoundary(c, cb) {
+      var kw2 = (c.name || '') + '市';
+      var kw1 = (c.adcode !== undefined && c.adcode !== null && c.adcode !== '') ? String(c.adcode) : null;
+      (function go(kw) {
+        if (!kw || !districtSearch) return cb(null);
+        try {
+          districtSearch.search(kw, function (status, result) {
+            var d = (status === 'complete' && result && result.districtList &&
+              result.districtList[0]) || null;
+            if (d && d.boundaries && d.boundaries.length) return cb(d);
+            if (kw !== kw2) return go(kw2);
+            cb(null);
+          });
+        } catch (e) { cb(null); }
+      })(kw1 || kw2);
+    }
+
+    function buildPolys(c) {
+      if (!map || c._polys || !c._rings || !c._rings.length) return;
+      var halo = new AMap.Polygon({
+        path: c._rings, strokeColor: '#7df2e0', strokeWeight: 8, strokeOpacity: 0.14,
+        fillColor: '#2fd8c6', fillOpacity: 0.08, zIndex: 38, bubble: false, cursor: 'pointer'
+      });
+      var main = new AMap.Polygon({
+        path: c._rings, strokeColor: '#9df7ea', strokeWeight: 1.6, strokeOpacity: 0.85,
+        fillColor: '#25d9c9', fillOpacity: 0.34, zIndex: 40, bubble: false, cursor: 'pointer'
+      });
+      [halo, main].forEach(function (p) {
+        map.add(p);
+        p.on('click', function () { openCard(c); });
+        p.on('mouseover', function () {
+          main.setOptions({ fillOpacity: 0.5, strokeWeight: 2.4 });
+          showTooltip(c);
+        });
+        p.on('mouseout', function () {
+          main.setOptions({ fillOpacity: 0.34, strokeWeight: 1.6 });
+          hideTooltip();
+        });
+      });
+      c._polys = [halo, main];
+      if (mode !== 'neon') { halo.hide(); main.hide(); }
+    }
+
+    function addMarkers(c) {
+      if (!map || !hasCoords(c)) return;
+      var hot = document.createElement('div');
+      hot.className = 'city-hotspot';
+      hot.appendChild(document.createElement('i'));
+      hot.addEventListener('click', function (e) { e.stopPropagation(); openCard(c); });
+      hot.addEventListener('mouseenter', function () { showTooltip(c); });
+      hot.addEventListener('mouseleave', hideTooltip);
+      c._hotEl = hot;
+      map.add(new AMap.Marker({
+        position: [c.lng, c.lat], content: hot, anchor: 'center', zIndex: 120
+      }));
+
+      var lab = document.createElement('div');
+      lab.className = 'city-label'; lab.textContent = c.name;
+      c._label = new AMap.Marker({
+        position: [c.lng, c.lat], content: lab, anchor: 'bottom-center', zIndex: 110
+      });
+      map.add(c._label);
+      if (mode === 'fog') c._label.hide();
+    }
+
+    /* ================= 演示模式（无 Key 兜底，抽象点阵） ================= */
+    function initDemo() {
+      if (demo.active) return;
+      demo.active = true;
+      mapDiv.style.display = 'none';
+      fx.style.pointerEvents = 'auto';
+      fx.style.cursor = 'default';
+      demoFit();
+      subtitle.textContent = '演示模式 · 抽象示意（配置 Key 后呈现真实地图）';
+      creditEl.textContent = '演示模式 · 经纬网示意 · 无行政区划底图';
+      fx.addEventListener('click', function (e) {
+        var c = hitCity(e.clientX, e.clientY);
+        if (c) openCard(c); else closeCard();
+      });
+      fx.addEventListener('mousemove', function (e) {
+        var c = hitCity(e.clientX, e.clientY);
+        fx.style.cursor = c ? 'pointer' : 'default';
+        if (c) showTooltip(c); else hideTooltip();
+      });
+      fx.addEventListener('mouseleave', hideTooltip);
+      scheduleRedraw();
+    }
+
+    function demoFit() {
+      var w = stage.clientWidth, h = stage.clientHeight;
+      var pad = Math.max(30, Math.min(w, h) * 0.09);
+      var spanX = (DEMO_BBOX.lng1 - DEMO_BBOX.lng0) * demo.latK;
+      var spanY = DEMO_BBOX.lat1 - DEMO_BBOX.lat0;
+      demo.k = Math.min((w - 2 * pad) / spanX, (h - 2 * pad) / spanY);
+      demo.fx0 = (w - spanX * demo.k) / 2;
+      demo.fy0 = (h - spanY * demo.k) / 2;
+    }
+
+    function showGuide(msg) {
+      if (msg) guideMsg.textContent = msg + ' 可先体验演示模式，或按以下步骤免费开通（约 3 分钟）。';
+      guide.hidden = false;
+    }
+
+    /* ================= 启动 ================= */
+    function init() {
+      sizeFx();
+      buildStats();
+      buildModeSwitch();
+      document.body.setAttribute('data-mode', mode);
+      syncModeButtons();
+
+      window.addEventListener('resize', function () {
+        sizeFx();
+        if (demo.active) demoFit();
+        scheduleRedraw();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeCard();
+      });
+      document.getElementById('demoBtn').addEventListener('click', function () {
+        guide.hidden = true;
+        initDemo();
+      });
+
+      if (amapCfg.key && !/^(YOUR|这里|请)/.test(amapCfg.key)) {
+        loadAMap();
+      } else {
+        showGuide('');
+      }
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>
