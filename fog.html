@@ -34,7 +34,7 @@
       pointer-events: auto;
     }
     #fx.dragging { cursor: grabbing; }
-    #fx.hover-city { cursor: pointer; }
+    #fx.hover-city, #fx.hover-node { cursor: pointer; }
 
     /* ---------- HUD ---------- */
     .hud { position: absolute; z-index: 1100; }
@@ -174,6 +174,7 @@
   <script src="./fog-china.js"></script>
   <script src="./fog-cities.js"></script>
   <script src="./fog-data.js"></script>
+  <script src="./fog-trails.js"></script>
   <script>
   (function () {
     'use strict';
@@ -186,6 +187,19 @@
     });
     var CHINA = window.FOG_CHINA || { features: [] };
     var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // 行迹图层（fog-trails.js）：与 track.html 的 FOG_ROUTES 同构，但数据独立
+    var TRAILS = (window.FOG_TRAILS || []).map(function (r) {
+      return {
+        id: String(r.id || ''),
+        name: String(r.name || r.id || '轨迹'),
+        tag: String(r.tag || r.name || ''),
+        color: /^#[0-9a-fA-F]{6}$/.test(r.color) ? r.color : '#5fd68b',
+        pts: (r.points || []).map(function (p) {
+          return { lng: +p[0], lat: +p[1], name: p.length > 2 ? String(p[2]) : '' };
+        }).filter(function (p) { return isFinite(p.lng) && isFinite(p.lat); })
+      };
+    }).filter(function (r) { return r.id && r.pts.length >= 2; });
 
     var stage = document.getElementById('stage');
     var fx = document.getElementById('fx');
@@ -347,6 +361,20 @@
     /* ================= 工具函数 ================= */
     function hasCoords(c) { return isFinite(c.lng) && isFinite(c.lat); }
 
+    // 轨迹主色 → rgba / 提亮（文字用）
+    function hexRGB(hex) {
+      var n = parseInt(hex.slice(1), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    function rgba(hex, a) {
+      var c = hexRGB(hex);
+      return 'rgba(' + c[0] + ', ' + c[1] + ', ' + c[2] + ', ' + a + ')';
+    }
+    function mixWhite(hex, k) {
+      var c = hexRGB(hex).map(function (v) { return Math.round(v + (255 - v) * k); });
+      return 'rgb(' + c[0] + ', ' + c[1] + ', ' + c[2] + ')';
+    }
+
     function daysSince(dateStr) {
       var t = Date.parse(dateStr + 'T00:00:00');
       if (isNaN(t)) return null;
@@ -398,7 +426,10 @@
     }
 
     /* ================= 渲染 ================= */
-    function needRaf() { return mode === 'pulse' && !reduceMotion; }
+    function needRaf() {
+      // 脉冲波纹与轨迹流动光段都需要连续帧（reduced-motion 时全部静态）
+      return !reduceMotion && (mode === 'pulse' || TRAILS.length > 0);
+    }
 
     function loop(t) {
       rafId = 0;
@@ -445,6 +476,9 @@
       if (mode === 'fog') drawFog();
       else if (mode === 'pulse') drawPulse(t || 0);
       else drawNeon();
+
+      // 行迹图层置于最上：迷雾模式下路线也保持可见
+      drawTrails(t || 0);
     }
 
     function drawGraticule() {
@@ -584,6 +618,103 @@
 
         drawNameLabel(c, { x: p.x, y: p.y + 4 * dpr });
       });
+    }
+
+    /* ================= 行迹图层 ================= */
+    // 行迹路线：柔光底衬 + 主线 + 流动光段；核心节点带名称
+    // （节点标签画在节点上方，避开城市名称标签所在的下方位置）
+    function drawTrails(t) {
+      TRAILS.forEach(function (r) {
+        var pts = r.pts.map(function (p) { return canvasXY(p.lng, p.lat); });
+        var path = new Path2D();
+        for (var i = 0; i < pts.length; i++) {
+          if (i === 0) path.moveTo(pts[i].x, pts[i].y); else path.lineTo(pts[i].x, pts[i].y);
+        }
+
+        ctx.save();
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.strokeStyle = rgba(r.color, 0.16);
+        ctx.lineWidth = 8 * dpr;
+        ctx.stroke(path);
+        ctx.strokeStyle = rgba(r.color, 0.85);
+        ctx.lineWidth = 2.4 * dpr;
+        ctx.stroke(path);
+        if (!reduceMotion) {
+          ctx.setLineDash([3 * dpr, 15 * dpr]);
+          ctx.lineDashOffset = -((t / 55) % 18) * dpr;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.lineWidth = 3.4 * dpr;
+          ctx.stroke(path);
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+
+        var labelXs = [];
+        r.pts.forEach(function (p, i) {
+          var q = pts[i];
+          if (q.x < -60 || q.x > fx.width + 60 || q.y < -60 || q.y > fx.height + 60) return;
+          drawTrailNode(q, r, i === 0 || i === r.pts.length - 1);
+          // 标签避让：与所有已放置标签保持横向间距（路线可能折返，取绝对值）
+          var ok = labelXs.every(function (x) { return Math.abs(q.x - x) >= 50 * dpr; });
+          if (p.name && ok) {
+            drawTrailLabel(p.name, q, r);
+            labelXs.push(q.x);
+          }
+        });
+      });
+    }
+
+    function drawTrailNode(p, r, isEnd) {
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 9 * dpr);
+      g.addColorStop(0, rgba(r.color, 0.45));
+      g.addColorStop(1, rgba(r.color, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 9 * dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = rgba(r.color, 0.95);
+      ctx.beginPath(); ctx.arc(p.x, p.y, (isEnd ? 3 : 2.1) * dpr, 0, Math.PI * 2); ctx.fill();
+      if (isEnd) {
+        // 起 / 终点加白圈
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 4.8 * dpr, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+
+    function drawTrailLabel(text, p, r) {
+      ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
+      ctx.fillStyle = mixWhite(r.color, 0.25);
+      ctx.font = (10.5 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, p.x, p.y - 14 * dpr);
+      ctx.shadowBlur = 0;
+    }
+
+    // 命中行迹核心节点（悬停/点按提示用），半径略小于城市命中
+    function hitTrailNode(clientX, clientY) {
+      var rect = stage.getBoundingClientRect();
+      var x = clientX - rect.left, y = clientY - rect.top;
+      var best = null, bestD = 14;
+      TRAILS.forEach(function (r) {
+        r.pts.forEach(function (p) {
+          if (!p.name) return;
+          var q = cssXY(p.lng, p.lat);
+          var d = Math.hypot(q.x - x, q.y - y);
+          if (d < bestD) { bestD = d; best = { route: r, node: p }; }
+        });
+      });
+      return best;
+    }
+
+    function showTrailTooltip(rn) {
+      var p = cssXY(rn.node.lng, rn.node.lat);
+      if (!p) return;
+      tooltip.innerHTML = '';
+      var b = document.createElement('b'); b.textContent = rn.node.name;
+      tooltip.appendChild(b);
+      tooltip.appendChild(document.createTextNode(' · ' + rn.route.tag));
+      tooltip.style.left = p.x + 'px';
+      tooltip.style.top = (p.y - 14) + 'px';
+      tooltip.classList.add('show');
     }
 
     /* ================= 样式切换 ================= */
@@ -751,6 +882,7 @@
         viewDirty = true;
         clampPan();
         closeCard();
+        hideTooltip();
         scheduleRedraw();
         return;
       }
@@ -763,11 +895,20 @@
           viewDirty = true;
           clampPan();
           closeCard();
+          hideTooltip();
           scheduleRedraw();
         }
         return;
       }
-      // 悬停（桌面）
+      // 悬停（桌面）：行迹节点优先，其次点亮城市
+      var tn = hitTrailNode(e.clientX, e.clientY);
+      if (tn) {
+        fx.classList.add('hover-node');
+        fx.classList.remove('hover-city');
+        showTrailTooltip(tn);
+        return;
+      }
+      fx.classList.remove('hover-node');
       var hit = hitCity(e.clientX, e.clientY);
       fx.classList.toggle('hover-city', !!hit);
       if (hit) showTooltip(hit); else hideTooltip();
@@ -777,9 +918,15 @@
       var wasSingle = pointers.size === 1;
       pointers.delete(e.pointerId);
       if (wasSingle && panState && !panState.moved && Date.now() - panState.t0 < 600) {
-        // 点按（未拖动）→ 命中城市则开卡片，否则关闭
-        var c = hitCity(e.clientX, e.clientY);
-        if (c) openCard(c); else closeCard();
+        // 点按（未拖动）→ 行迹节点提示；命中城市则开卡片，否则全部收起
+        var tn = hitTrailNode(e.clientX, e.clientY);
+        if (tn) {
+          showTrailTooltip(tn);
+        } else {
+          var c = hitCity(e.clientX, e.clientY);
+          if (c) openCard(c);
+          else { closeCard(); hideTooltip(); }
+        }
       }
       panState = null;
       pinchState = null;
@@ -827,7 +974,7 @@
         updateCardPosition();
       });
       document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') closeCard();
+        if (e.key === 'Escape') { closeCard(); hideTooltip(); }
       });
 
       scheduleRedraw();
