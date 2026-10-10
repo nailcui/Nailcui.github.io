@@ -196,7 +196,8 @@
 
     var mode = MODES.indexOf(cfg.style) >= 0 ? cfg.style : 'neon';
     try {
-      var saved = localStorage.getItem('fog:mode');
+      // 键名带版本号：默认样式变更时递增，让新默认值对老访客生效一次
+      var saved = localStorage.getItem('fog:mode:2');
       if (saved && MODES.indexOf(saved) >= 0) mode = saved;
     } catch (e) { /* 隐私模式下 localStorage 不可用 */ }
 
@@ -589,7 +590,7 @@
     function setMode(m) {
       if (MODES.indexOf(m) < 0) return;
       mode = m;
-      try { localStorage.setItem('fog:mode', m); } catch (e) {}
+      try { localStorage.setItem('fog:mode:2', m); } catch (e) {}
       document.body.setAttribute('data-mode', m);
       syncModeButtons();
       closeCard();

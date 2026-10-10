@@ -20,7 +20,7 @@
  * style 为默认点亮样式：'neon' 霓虹光圈 | 'fog' 迷雾探索 | 'pulse' 星火脉冲
  */
 window.FOG_CONFIG = {
-  style: 'neon'
+  style: 'pulse'
 };
 
 // 已点亮城市（日期与备注待补充）
