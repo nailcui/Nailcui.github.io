@@ -41,5 +41,14 @@ window.FOG_CITIES = [
   { name: '湘西',   province: '湖南', adcode: '433100', lng: 109.739, lat: 28.312, date: '', note: '' },
   { name: '九江',   province: '江西', adcode: '360400', lng: 115.993, lat: 29.712, date: '', note: '' },
   { name: '平潭',   province: '福建', adcode: '350128', lng: 119.792, lat: 25.499, date: '', note: '' },
-  { name: '福州',   province: '福建', adcode: '350100', lng: 119.297, lat: 26.074, date: '', note: '' }
+  { name: '福州',   province: '福建', adcode: '350100', lng: 119.297, lat: 26.074, date: '', note: '' },
+  { name: '怀化',   province: '湖南', adcode: '431200', lng: 109.974, lat: 27.550, date: '', note: '' },
+  { name: '常德',   province: '湖南', adcode: '430700', lng: 111.691, lat: 29.040, date: '', note: '' },
+  { name: '张家界', province: '湖南', adcode: '430800', lng: 110.479, lat: 29.127, date: '', note: '' },
+  { name: '萍乡',   province: '江西', adcode: '360300', lng: 113.854, lat: 27.623, date: '', note: '' },
+  { name: '新余',   province: '江西', adcode: '360500', lng: 114.917, lat: 27.810, date: '', note: '' },
+  { name: '南昌',   province: '江西', adcode: '360100', lng: 115.858, lat: 28.683, date: '', note: '' },
+  { name: '宜春',   province: '江西', adcode: '360900', lng: 114.416, lat: 27.817, date: '', note: '' },
+  { name: '衢州',   province: '浙江', adcode: '330800', lng: 118.859, lat: 28.970, date: '', note: '' },
+  { name: '金华',   province: '浙江', adcode: '330700', lng: 119.649, lat: 29.089, date: '', note: '' }
 ];
