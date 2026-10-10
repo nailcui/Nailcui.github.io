@@ -188,18 +188,24 @@
     var CHINA = window.FOG_CHINA || { features: [] };
     var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // 行迹图层（fog-trails.js）：与 track.html 的 FOG_ROUTES 同构，但数据独立
+    // 行迹图层（fog-trails.js）：与 track.html 的 FOG_ROUTES 同构，但数据独立。
+    // branches（可选）为放射支线（如「杭州出发」），缺省时整条 points 为一段折线；
+    // 统一归一化成 lines（折线段数组），绘制与命中都按段遍历
     var TRAILS = (window.FOG_TRAILS || []).map(function (r) {
+      var lines = (r.branches && r.branches.length ? r.branches : [r.points || []])
+        .map(function (points) {
+          return (points || []).map(function (p) {
+            return { lng: +p[0], lat: +p[1], name: p.length > 2 ? String(p[2]) : '' };
+          }).filter(function (p) { return isFinite(p.lng) && isFinite(p.lat); });
+        }).filter(function (pts) { return pts.length >= 2; });
       return {
         id: String(r.id || ''),
         name: String(r.name || r.id || '轨迹'),
         tag: String(r.tag || r.name || ''),
         color: /^#[0-9a-fA-F]{6}$/.test(r.color) ? r.color : '#5fd68b',
-        pts: (r.points || []).map(function (p) {
-          return { lng: +p[0], lat: +p[1], name: p.length > 2 ? String(p[2]) : '' };
-        }).filter(function (p) { return isFinite(p.lng) && isFinite(p.lat); })
+        lines: lines
       };
-    }).filter(function (r) { return r.id && r.pts.length >= 2; });
+    }).filter(function (r) { return r.id && r.lines.length > 0; });
 
     var stage = document.getElementById('stage');
     var fx = document.getElementById('fx');
@@ -625,41 +631,43 @@
     // （节点标签画在节点上方，避开城市名称标签所在的下方位置）
     function drawTrails(t) {
       TRAILS.forEach(function (r) {
-        var pts = r.pts.map(function (p) { return canvasXY(p.lng, p.lat); });
-        var path = new Path2D();
-        for (var i = 0; i < pts.length; i++) {
-          if (i === 0) path.moveTo(pts[i].x, pts[i].y); else path.lineTo(pts[i].x, pts[i].y);
-        }
-
-        ctx.save();
-        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-        ctx.strokeStyle = rgba(r.color, 0.16);
-        ctx.lineWidth = 8 * dpr;
-        ctx.stroke(path);
-        ctx.strokeStyle = rgba(r.color, 0.85);
-        ctx.lineWidth = 2.4 * dpr;
-        ctx.stroke(path);
-        if (!reduceMotion) {
-          ctx.setLineDash([3 * dpr, 15 * dpr]);
-          ctx.lineDashOffset = -((t / 55) % 18) * dpr;
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-          ctx.lineWidth = 3.4 * dpr;
-          ctx.stroke(path);
-          ctx.setLineDash([]);
-        }
-        ctx.restore();
-
+        // 标签避让按整条行迹统计：支线间共用起点的标签也要保持横向间距
         var labelXs = [];
-        r.pts.forEach(function (p, i) {
-          var q = pts[i];
-          if (q.x < -60 || q.x > fx.width + 60 || q.y < -60 || q.y > fx.height + 60) return;
-          drawTrailNode(q, r, i === 0 || i === r.pts.length - 1);
-          // 标签避让：与所有已放置标签保持横向间距（路线可能折返，取绝对值）
-          var ok = labelXs.every(function (x) { return Math.abs(q.x - x) >= 50 * dpr; });
-          if (p.name && ok) {
-            drawTrailLabel(p.name, q, r);
-            labelXs.push(q.x);
+        r.lines.forEach(function (pts) {
+          var cs = pts.map(function (p) { return canvasXY(p.lng, p.lat); });
+          var path = new Path2D();
+          for (var i = 0; i < cs.length; i++) {
+            if (i === 0) path.moveTo(cs[i].x, cs[i].y); else path.lineTo(cs[i].x, cs[i].y);
           }
+
+          ctx.save();
+          ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+          ctx.strokeStyle = rgba(r.color, 0.16);
+          ctx.lineWidth = 8 * dpr;
+          ctx.stroke(path);
+          ctx.strokeStyle = rgba(r.color, 0.85);
+          ctx.lineWidth = 2.4 * dpr;
+          ctx.stroke(path);
+          if (!reduceMotion) {
+            ctx.setLineDash([3 * dpr, 15 * dpr]);
+            ctx.lineDashOffset = -((t / 55) % 18) * dpr;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.lineWidth = 3.4 * dpr;
+            ctx.stroke(path);
+            ctx.setLineDash([]);
+          }
+          ctx.restore();
+
+          cs.forEach(function (q, i) {
+            if (q.x < -60 || q.x > fx.width + 60 || q.y < -60 || q.y > fx.height + 60) return;
+            drawTrailNode(q, r, i === 0 || i === cs.length - 1);
+            // 标签避让：与所有已放置标签保持横向间距（路线可能折返，取绝对值）
+            var ok = labelXs.every(function (x) { return Math.abs(q.x - x) >= 50 * dpr; });
+            if (pts[i].name && ok) {
+              drawTrailLabel(pts[i].name, q, r);
+              labelXs.push(q.x);
+            }
+          });
         });
       });
     }
@@ -695,11 +703,13 @@
       var x = clientX - rect.left, y = clientY - rect.top;
       var best = null, bestD = 14;
       TRAILS.forEach(function (r) {
-        r.pts.forEach(function (p) {
-          if (!p.name) return;
-          var q = cssXY(p.lng, p.lat);
-          var d = Math.hypot(q.x - x, q.y - y);
-          if (d < bestD) { bestD = d; best = { route: r, node: p }; }
+        r.lines.forEach(function (pts) {
+          pts.forEach(function (p) {
+            if (!p.name) return;
+            var q = cssXY(p.lng, p.lat);
+            var d = Math.hypot(q.x - x, q.y - y);
+            if (d < bestD) { bestD = d; best = { route: r, node: p }; }
+          });
         });
       });
       return best;
