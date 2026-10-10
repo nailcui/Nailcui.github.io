@@ -1,77 +1,644 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nailcui</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="nailcui 的个人主页">
+<meta name="theme-color" content="#fafafa">
+<title>Nailcui · 个人主页</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #050810;
+    color: #fff;
+    overflow: hidden;
+  }
+  a { color: inherit; }
+  button { font: inherit; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: #fff;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-    }
+  /* ================= 主题容器 ================= */
+  .theme { position: fixed; inset: 0; display: none; }
+  .theme.active { display: flex; }
+  .wrap { margin: auto; padding: 24px; position: relative; z-index: 2; }
 
-    .container {
-      padding: 2rem;
-    }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .fade-up { opacity: 0; animation: fadeUp .8s cubic-bezier(.2,.7,.3,1) both; }
+  .d1 { animation-delay: .12s; }
+  .d2 { animation-delay: .24s; }
+  .d3 { animation-delay: .36s; }
+  .d4 { animation-delay: .5s; }
 
-    h1 {
-      font-size: 3rem;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      margin-bottom: 1rem;
-    }
+  /* ================= 1. 简约 minimal ================= */
+  .t-minimal { background: #fafafa; color: #141414; }
+  .m-wrap { text-align: center; }
+  .m-hi { font-size: 15px; letter-spacing: .35em; color: #999; }
+  .m-name {
+    font-size: clamp(52px, 10vw, 104px);
+    font-weight: 200;
+    letter-spacing: .04em;
+    margin: 12px 0 22px;
+  }
+  .m-line { width: 56px; height: 1px; background: #d8d8d8; margin: 0 auto 22px; }
+  .m-sub { font-size: 15px; color: #666; margin-bottom: 38px; letter-spacing: .12em; }
+  .m-links { display: flex; gap: 30px; justify-content: center; }
+  .m-link {
+    display: inline-block;
+    font-size: 14px;
+    letter-spacing: .14em;
+    color: #141414;
+    text-decoration: none;
+    padding: 10px 2px;
+    position: relative;
+  }
+  .m-link::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 4px;
+    height: 1px;
+    background: #141414;
+    transform: scaleX(.35);
+    transform-origin: left;
+    transition: transform .35s;
+  }
+  .m-link:hover::after { transform: scaleX(1); }
 
-    p {
-      font-size: 1.2rem;
-      opacity: 0.85;
-      margin-bottom: 2rem;
-    }
+  /* ================= 2. 终端 term ================= */
+  .t-term {
+    background: #0d1117;
+    color: #c9d1d9;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+      "Liberation Mono", monospace;
+  }
+  .term {
+    width: min(640px, 92vw);
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+    overflow: hidden;
+  }
+  .term-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #1c2129;
+    border-bottom: 1px solid #30363d;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.r { background: #ff5f56; }
+  .dot.y { background: #ffbd2e; }
+  .dot.g { background: #27c93f; }
+  .term-title { margin-left: 8px; font-size: 12px; color: #8b949e; }
+  .term-body { padding: 20px 22px; font-size: 14px; line-height: 2; min-height: 250px; }
+  .tl { white-space: pre-wrap; word-break: break-all; }
+  .tl .p { color: #3fb950; font-weight: 600; }
+  .tl.dim { color: #8b949e; }
+  .tl a {
+    color: #58a6ff;
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(88, 166, 255, .5);
+  }
+  .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 1.05em;
+    background: #c9d1d9;
+    vertical-align: -2px;
+    margin-left: 2px;
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
 
-    .links {
-      display: flex;
-      gap: 0.9rem;
-      justify-content: center;
-      flex-wrap: wrap;
-    }
+  /* ================= 3. 极光 aurora ================= */
+  .t-aurora { background: #0a0e1a; color: #eef1ff; }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: .5;
+    z-index: 1;
+  }
+  .b1 { width: 52vmax; height: 52vmax; background: #5346ff; top: -16vmax; left: -12vmax; animation: drift1 16s ease-in-out infinite alternate; }
+  .b2 { width: 44vmax; height: 44vmax; background: #00b89f; bottom: -16vmax; right: -10vmax; animation: drift2 20s ease-in-out infinite alternate; }
+  .b3 { width: 30vmax; height: 30vmax; background: #ff4f9a; top: 36%; left: 56%; animation: drift3 24s ease-in-out infinite alternate; }
+  @keyframes drift1 { to { transform: translate(7vmax, 5vmax) scale(1.12); } }
+  @keyframes drift2 { to { transform: translate(-6vmax, -4vmax) scale(1.18); } }
+  @keyframes drift3 { to { transform: translate(-5vmax, 6vmax) scale(.9); } }
+  .card-a {
+    width: min(540px, 88vw);
+    text-align: center;
+    padding: clamp(36px, 7vw, 60px) clamp(24px, 5vw, 48px);
+    border-radius: 26px;
+    background: rgba(255, 255, 255, .06);
+    border: 1px solid rgba(255, 255, 255, .16);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .4);
+  }
+  .a-kicker { font-size: 12px; letter-spacing: .4em; color: rgba(238, 241, 255, .55); margin-bottom: 18px; }
+  .a-name {
+    font-size: clamp(46px, 9vw, 76px);
+    font-weight: 700;
+    letter-spacing: .02em;
+    margin-bottom: 14px;
+    background: linear-gradient(92deg, #9fb0ff 0%, #7df0d4 55%, #ffa3c9 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .a-sub { font-size: 15px; color: rgba(238, 241, 255, .75); margin-bottom: 32px; letter-spacing: .06em; }
+  .a-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .a-btn {
+    display: inline-block;
+    padding: 12px 32px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .35);
+    color: #eef1ff;
+    text-decoration: none;
+    font-size: 14px;
+    letter-spacing: .12em;
+    transition: .3s;
+  }
+  .a-btn-ghost { border-color: rgba(255, 255, 255, .18); color: rgba(238, 241, 255, .75); }
+  .a-btn:hover { background: rgba(255, 255, 255, .92); color: #1b2240; border-color: transparent; }
 
-    a.button {
-      display: inline-block;
-      padding: 0.75rem 2rem;
-      border: 2px solid rgba(255, 255, 255, 0.8);
-      border-radius: 999px;
-      color: #fff;
-      text-decoration: none;
-      font-size: 1rem;
-      transition: background 0.3s ease, color 0.3s ease;
-    }
+  /* ================= 4. 杂志 mag ================= */
+  .t-mag {
+    background: #f6f1e7;
+    color: #2b261d;
+    font-family: Georgia, "Times New Roman", "Songti SC", "STSong", serif;
+  }
+  .mag-wrap { max-width: 760px; text-align: center; }
+  .mag-top {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    letter-spacing: .35em;
+    color: #8a7f6a;
+    border-top: 1px solid #c9bfa8;
+    border-bottom: 1px solid #c9bfa8;
+    padding: 10px 4px;
+    margin-bottom: clamp(30px, 7vh, 64px);
+  }
+  .mag-name {
+    font-size: clamp(58px, 12vw, 124px);
+    font-weight: 400;
+    line-height: 1.05;
+    margin-bottom: 26px;
+  }
+  .mag-rule { display: flex; align-items: center; gap: 12px; margin: 0 auto 26px; max-width: 420px; }
+  .mag-rule::before, .mag-rule::after { content: ""; flex: 1; height: 1px; background: #c9bfa8; }
+  .mag-rule i { width: 7px; height: 7px; background: #b0532f; transform: rotate(45deg); }
+  .mag-sub { font-size: 16px; line-height: 2; color: #5c5443; max-width: 46ch; margin: 0 auto 40px; }
+  .mag-links { display: flex; gap: 16px; justify-content: center; align-items: baseline; }
+  .mag-sep { color: #8a7f6a; }
+  .mag-link {
+    display: inline-block;
+    font-size: 13px;
+    letter-spacing: .28em;
+    color: #b0532f;
+    text-decoration: none;
+    border-bottom: 1px solid #b0532f;
+    padding-bottom: 4px;
+    transition: .3s;
+  }
+  .mag-link:hover { color: #2b261d; border-color: #2b261d; }
+  .mag-foot { margin-top: clamp(28px, 6vh, 56px); font-size: 12px; letter-spacing: .4em; color: #8a7f6a; }
+  .mag-v {
+    position: absolute;
+    left: clamp(16px, 4vw, 48px);
+    top: 50%;
+    transform: translateY(-50%);
+    writing-mode: vertical-rl;
+    font-size: 14px;
+    letter-spacing: .6em;
+    color: #a89b7f;
+    z-index: 1;
+  }
 
-    a.button:hover {
-      background: #fff;
-      color: #764ba2;
-    }
-  </style>
+  /* ================= 5. 星空 stars ================= */
+  .t-stars {
+    background: radial-gradient(1100px 700px at 72% 18%, #131f3d 0%, rgba(0,0,0,0) 60%), #050810;
+    color: #fff;
+  }
+  .stars-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+  .stars-wrap { text-align: center; }
+  .s-kicker { font-size: 13px; letter-spacing: .5em; color: rgba(255, 255, 255, .55); margin-bottom: 16px; }
+  .s-name {
+    font-size: clamp(48px, 10vw, 96px);
+    font-weight: 600;
+    letter-spacing: .06em;
+    margin-bottom: 16px;
+    text-shadow: 0 0 24px rgba(140, 170, 255, .55), 0 0 80px rgba(140, 170, 255, .3);
+  }
+  .s-sub { font-size: 15px; color: rgba(255, 255, 255, .7); margin-bottom: 38px; letter-spacing: .1em; }
+  .s-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .s-btn {
+    display: inline-block;
+    padding: 11px 32px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .4);
+    color: #fff;
+    text-decoration: none;
+    font-size: 14px;
+    letter-spacing: .16em;
+    transition: .3s;
+  }
+  .s-btn-ghost { border-color: rgba(255, 255, 255, .22); color: rgba(255, 255, 255, .75); }
+  .s-btn:hover { background: #fff; color: #0b1226; }
+
+  /* ================= 样式切换条 ================= */
+  .switcher {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    display: none;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 999px;
+    background: rgba(18, 18, 24, .72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, .14);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+    z-index: 200;
+  }
+  .switcher button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, .65);
+    font-size: 13px;
+    padding: 8px 15px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: .25s;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .switcher button.on { background: rgba(255, 255, 255, .92); color: #111; font-weight: 600; }
+  .switcher button:not(.on):hover { color: #fff; }
+
+  .hint {
+    position: fixed;
+    top: calc(16px + env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 9px 18px;
+    border-radius: 999px;
+    background: rgba(18, 18, 24, .78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, .14);
+    color: rgba(255, 255, 255, .9);
+    font-size: 13px;
+    letter-spacing: .08em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .5s;
+    z-index: 199;
+    white-space: nowrap;
+  }
+  .hint.show { opacity: 1; }
+
+  @media (max-width: 480px) {
+    .switcher { gap: 0; padding: 5px; }
+    .switcher button { padding: 7px 11px; font-size: 12px; }
+    .term-body { font-size: 12.5px; padding: 16px; min-height: 228px; }
+    .term-title { display: none; }
+    .mag-sub { font-size: 15px; }
+  }
+  @media (max-width: 760px) {
+    .mag-v { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fade-up { animation: none; opacity: 1; }
+    .blob, .cursor { animation: none; }
+  }
+</style>
 </head>
 <body>
-  <div class="container">
-    <h1>Hello, I'm Nailcui</h1>
-    <p>欢迎来到我的个人主页，网站重建中，敬请期待。</p>
-    <div class="links">
-      <a class="button" href="./fog.html">🌫 世界迷雾</a>
-      <a class="button" href="https://github.com/nailcui" target="_blank" rel="noopener">GitHub</a>
+
+  <!-- 1. 简约 -->
+  <section class="theme t-minimal active" id="t-minimal">
+    <div class="wrap m-wrap">
+      <p class="m-hi fade-up">你好，我是</p>
+      <h1 class="m-name fade-up d1">Nailcui</h1>
+      <div class="m-line fade-up d2"></div>
+      <p class="m-sub fade-up d3">欢迎来到我的个人主页。</p>
+      <div class="m-links fade-up d4">
+        <a class="m-link" href="./fog.html">世界迷雾 →</a>
+        <a class="m-link" href="https://github.com/nailcui" target="_blank" rel="noopener">GitHub →</a>
+      </div>
     </div>
-  </div>
+  </section>
+
+  <!-- 2. 终端 -->
+  <section class="theme t-term" id="t-term">
+    <div class="wrap">
+      <div class="term">
+        <div class="term-bar">
+          <i class="dot r"></i><i class="dot y"></i><i class="dot g"></i>
+          <span class="term-title">nailcui@home — zsh</span>
+        </div>
+        <div class="term-body" id="termBody"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 极光 -->
+  <section class="theme t-aurora" id="t-aurora">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="blob b3"></div>
+    <div class="wrap">
+      <div class="card-a fade-up">
+        <p class="a-kicker">WELCOME · 欢迎光临</p>
+        <h1 class="a-name">Nailcui</h1>
+        <p class="a-sub">你好，欢迎来到我的个人主页。</p>
+        <div class="a-btns fade-up d2">
+          <a class="a-btn" href="./fog.html">🌫 世界迷雾</a>
+          <a class="a-btn a-btn-ghost" href="https://github.com/nailcui" target="_blank" rel="noopener">GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. 杂志 -->
+  <section class="theme t-mag" id="t-mag">
+    <div class="mag-v">欢迎来访</div>
+    <div class="wrap mag-wrap">
+      <header class="mag-top fade-up"><span>PERSONAL PAGE</span><span>个人主页</span></header>
+      <h1 class="mag-name fade-up d1">Nailcui</h1>
+      <div class="mag-rule fade-up d2"><i></i></div>
+      <p class="mag-sub fade-up d3">你好，欢迎来到我的个人主页 —— 这里是记录代码、生活与想法的小角落。站点重建中，敬请期待。</p>
+      <div class="mag-links fade-up d4">
+        <a class="mag-link" href="./fog.html">世界迷雾</a>
+        <span class="mag-sep">·</span>
+        <a class="mag-link" href="https://github.com/nailcui" target="_blank" rel="noopener">GITHUB · NAILCUI</a>
+      </div>
+      <footer class="mag-foot fade-up d4">— 01 —</footer>
+    </div>
+  </section>
+
+  <!-- 5. 星空 -->
+  <section class="theme t-stars" id="t-stars">
+    <canvas class="stars-canvas" id="starsCanvas"></canvas>
+    <div class="wrap stars-wrap">
+      <p class="s-kicker fade-up">· 欢迎光临 ·</p>
+      <h1 class="s-name fade-up d1">Nailcui</h1>
+      <p class="s-sub fade-up d2">你好，欢迎来到我的个人主页。</p>
+      <div class="s-btns fade-up d3">
+        <a class="s-btn" href="./fog.html">🌫 世界迷雾</a>
+        <a class="s-btn s-btn-ghost" href="https://github.com/nailcui" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 样式切换条 -->
+  <nav class="switcher" id="switcher" aria-label="首页样式切换" style="display:none">
+    <button type="button" data-t="minimal" class="on" aria-pressed="true">简约</button>
+    <button type="button" data-t="term" aria-pressed="false">终端</button>
+    <button type="button" data-t="aurora" aria-pressed="false">极光</button>
+    <button type="button" data-t="mag" aria-pressed="false">杂志</button>
+    <button type="button" data-t="stars" aria-pressed="false">星空</button>
+  </nav>
+  <div class="hint" id="hint">点击底部切换首页样式，选择会自动记住</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var THEMES = ['minimal', 'term', 'aurora', 'mag', 'stars'];
+  var KEY = 'hp:style';
+  var COLORS = { minimal: '#fafafa', term: '#0d1117', aurora: '#0a0e1a', mag: '#f6f1e7', stars: '#050810' };
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var metaColor = document.querySelector('meta[name="theme-color"]');
+
+  var sections = {}, btns = {};
+  THEMES.forEach(function (t) {
+    sections[t] = document.getElementById('t-' + t);
+    btns[t] = document.querySelector('.switcher [data-t="' + t + '"]');
+  });
+  var switcher = document.getElementById('switcher');
+  var hint = document.getElementById('hint');
+
+  var current = null;
+  var termTimer = null;
+  var particles = null;
+
+  /* ---------------- 终端打字机 ---------------- */
+  var TERM_LINES = [
+    { type: 'in',  text: 'whoami' },
+    { type: 'out', text: 'nailcui' },
+    { type: 'in',  text: 'cat welcome.txt' },
+    { type: 'out', text: '你好，欢迎来到我的个人主页。' },
+    { type: 'out', text: '站点重建中，敬请期待 :)', dim: true },
+    { type: 'in',  text: 'open ./fog.html', href: './fog.html', label: '世界迷雾 · World Fog ↗' },
+    { type: 'in',  text: 'open github.com/nailcui', href: 'https://github.com/nailcui', label: 'github.com/nailcui ↗', blank: true }
+  ];
+
+  function esc(s) {
+    return s.replace(/[&<>]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c];
+    });
+  }
+
+  function startTerm() {
+    var body = document.getElementById('termBody');
+    clearTimeout(termTimer);
+    body.innerHTML = '';
+    var mk = function (html) {
+      var d = document.createElement('div');
+      d.className = 'tl';
+      d.innerHTML = html;
+      body.appendChild(d);
+      return d;
+    };
+    var linkHtml = function (l) {
+      return '<a href="' + l.href + '"' + (l.blank ? ' target="_blank" rel="noopener"' : '') + '>' + esc(l.label) + '</a>';
+    };
+    if (reduced) {
+      TERM_LINES.forEach(function (l) {
+        if (l.type === 'in' && l.href) mk('<span class="p">$</span> ' + linkHtml(l));
+        else if (l.type === 'in') mk('<span class="p">$</span> ' + esc(l.text));
+        else mk(l.dim ? '<span class="dim">' + esc(l.text) + '</span>' : esc(l.text));
+      });
+      mk('<span class="p">$</span> <span class="cursor"></span>');
+      return;
+    }
+    var i = 0;
+    var next = function () {
+      if (i >= TERM_LINES.length) {
+        mk('<span class="p">$</span> <span class="cursor"></span>');
+        return;
+      }
+      var l = TERM_LINES[i++];
+      if (l.type === 'in') {
+        var d = mk('<span class="p">$</span> <span class="cursor"></span>');
+        var c = 0;
+        var type = function () {
+          c++;
+          d.innerHTML = '<span class="p">$</span> ' + esc(l.text.slice(0, c)) + '<span class="cursor"></span>';
+          if (c < l.text.length) termTimer = setTimeout(type, 38);
+          else {
+            if (l.href) d.innerHTML = '<span class="p">$</span> ' + linkHtml(l);
+            termTimer = setTimeout(next, 380);
+          }
+        };
+        type();
+      } else {
+        mk(l.dim ? '<span class="dim">' + esc(l.text) + '</span>' : esc(l.text));
+        termTimer = setTimeout(next, 260);
+      }
+    };
+    next();
+  }
+
+  /* ---------------- 星空粒子 ---------------- */
+  function initStars() {
+    var cv = document.getElementById('starsCanvas');
+    var ctx = cv.getContext('2d');
+    var W = 0, H = 0, pts = [], raf = null;
+    var mouse = { x: -1e4, y: -1e4 };
+
+    function resize() {
+      W = cv.clientWidth; H = cv.clientHeight;
+      if (!W || !H) return;
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = W * dpr; cv.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      var n = Math.round(Math.min(130, Math.max(40, (W * H) / 14000)));
+      pts = [];
+      for (var k = 0; k < n; k++) {
+        pts.push({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - .5) * .35, vy: (Math.random() - .5) * .35,
+          r: Math.random() * 1.6 + .6
+        });
+      }
+    }
+
+    function drawStatic() {
+      ctx.clearRect(0, 0, W, H);
+      pts.forEach(function (p) {
+        ctx.fillStyle = 'rgba(220,230,255,.85)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, 7);
+        ctx.fill();
+      });
+    }
+
+    function frame() {
+      ctx.clearRect(0, 0, W, H);
+      for (var i = 0; i < pts.length; i++) {
+        var p = pts[i];
+        p.x += p.vx; p.y += p.vy;
+        var dx = p.x - mouse.x, dy = p.y - mouse.y, d2 = dx * dx + dy * dy;
+        if (d2 < 14400) {
+          var d = Math.sqrt(d2) || 1;
+          p.x += dx / d * 1.2; p.y += dy / d * 1.2;
+        }
+        if (p.x < -20) p.x = W + 20; else if (p.x > W + 20) p.x = -20;
+        if (p.y < -20) p.y = H + 20; else if (p.y > H + 20) p.y = -20;
+        for (var j = i + 1; j < pts.length; j++) {
+          var q = pts[j], ex = p.x - q.x, ey = p.y - q.y, dist2 = ex * ex + ey * ey;
+          if (dist2 < 12100) {
+            ctx.strokeStyle = 'rgba(150,175,255,' + (.35 * (1 - dist2 / 12100)).toFixed(3) + ')';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(q.x, q.y);
+            ctx.stroke();
+          }
+        }
+        ctx.fillStyle = 'rgba(220,230,255,.85)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, 7);
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(frame);
+    }
+
+    cv.parentElement.addEventListener('pointermove', function (e) {
+      var r = cv.getBoundingClientRect();
+      mouse.x = e.clientX - r.left;
+      mouse.y = e.clientY - r.top;
+    });
+    cv.parentElement.addEventListener('pointerleave', function () {
+      mouse.x = -1e4; mouse.y = -1e4;
+    });
+    window.addEventListener('resize', resize);
+    resize();
+
+    return {
+      start: function () {
+        resize();
+        if (!W || !H) return;
+        if (raf) return;
+        if (reduced) { drawStatic(); return; }
+        raf = requestAnimationFrame(frame);
+      },
+      stop: function () {
+        if (raf) { cancelAnimationFrame(raf); raf = null; }
+      }
+    };
+  }
+
+  /* ---------------- 主题切换 ---------------- */
+  function show(t, save) {
+    if (THEMES.indexOf(t) === -1) t = 'minimal';
+    if (t === current) return;
+    if (current === 'stars' && particles) particles.stop();
+    clearTimeout(termTimer);
+
+    THEMES.forEach(function (k) {
+      sections[k].classList.toggle('active', k === t);
+      btns[k].classList.toggle('on', k === t);
+      btns[k].setAttribute('aria-pressed', k === t ? 'true' : 'false');
+    });
+    current = t;
+    if (metaColor) metaColor.setAttribute('content', COLORS[t]);
+    if (save !== false) {
+      try { localStorage.setItem(KEY, t); } catch (e) {}
+    }
+    if (t === 'term') startTerm();
+    if (t === 'stars') {
+      if (!particles) particles = initStars();
+      particles.start();
+    }
+  }
+
+  switcher.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-t]');
+    if (b) show(b.getAttribute('data-t'));
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    var i = THEMES.indexOf(current);
+    var n = (i + (e.key === 'ArrowRight' ? 1 : -1) + THEMES.length) % THEMES.length;
+    show(THEMES[n]);
+  });
+
+  /* ---------------- 初始化 ---------------- */
+  switcher.style.display = 'flex';
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  if (!saved && !reduced) {
+    hint.classList.add('show');
+    setTimeout(function () { hint.classList.remove('show'); }, 3200);
+  }
+  show(saved || 'minimal', false);
+})();
+</script>
 </body>
 </html>
