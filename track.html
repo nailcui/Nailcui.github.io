@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="行迹轨迹 —— 走过的路，正在延伸。">
+  <title>行迹轨迹 · Nailcui</title>
+  <style>
+    :root {
+      --bg: #0a1420;
+      --ink: #e8f6f3;
+      --acc: #4df0d8;
+      --acc2: #8cf7e8;
+      --glass: rgba(10, 22, 34, 0.72);
+      --line: rgba(77, 240, 216, 0.3);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+    }
+
+    #stage { position: relative; width: 100%; height: 100vh; height: 100dvh; }
+    /* 全部内容由一块画布绘制：底图、轨迹、交互都在它上面 */
+    #fx {
+      position: absolute; inset: 0; touch-action: none; cursor: grab;
+      pointer-events: auto;
+    }
+    #fx.dragging { cursor: grabbing; }
+    #fx.hover-node { cursor: pointer; }
+
+    /* ---------- HUD ---------- */
+    .hud { position: absolute; z-index: 1100; }
+    .hud-top {
+      top: 0; left: 0; right: 0;
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 0;
+      pointer-events: none;
+    }
+    .back {
+      display: inline-flex; align-items: center; height: 32px; padding: 0 14px;
+      border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.16);
+      background: var(--glass); color: var(--ink); text-decoration: none;
+      font-size: 13px; backdrop-filter: blur(8px); pointer-events: auto;
+      transition: border-color 0.25s, color 0.25s; white-space: nowrap;
+    }
+    .back:hover { border-color: var(--line); color: var(--acc2); }
+    .brand h1 {
+      font-size: 17px; font-weight: 600; letter-spacing: 0.35em;
+      text-shadow: 0 0 18px rgba(77, 240, 216, 0.35);
+    }
+    .brand p { font-size: 11px; opacity: 0.62; margin-top: 3px; letter-spacing: 0.12em; }
+    .stats {
+      margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .stats span {
+      display: inline-flex; align-items: center; height: 26px; padding: 0 11px;
+      border-radius: 999px; background: var(--glass);
+      border: 1px solid rgba(255, 255, 255, 0.12); font-size: 12px;
+      color: #cfeee8; backdrop-filter: blur(8px); white-space: nowrap;
+    }
+    .stats b { color: var(--acc2); font-weight: 600; margin: 0 2px; }
+
+    .route-switch {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+      left: 50%; transform: translateX(-50%);
+      display: flex; gap: 2px; padding: 4px; border-radius: 999px;
+      background: var(--glass); border: 1px solid rgba(255, 255, 255, 0.14);
+      backdrop-filter: blur(10px); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+    .route-switch button {
+      appearance: none; border: 0; background: transparent; color: #bfe6df;
+      font-size: 13px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+      transition: background 0.25s, color 0.25s, box-shadow 0.25s;
+      white-space: nowrap; letter-spacing: 0.05em; font-family: inherit;
+    }
+    .route-switch button:hover { color: var(--acc2); }
+
+    .credit {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 5px);
+      left: 50%; transform: translateX(-50%);
+      font-size: 10px; color: rgba(210, 235, 230, 0.42); letter-spacing: 0.06em;
+      pointer-events: none; white-space: nowrap;
+    }
+
+    /* ---------- 节点悬停提示 ---------- */
+    #tooltip {
+      position: absolute; z-index: 1350; pointer-events: none;
+      transform: translate(-50%, -160%);
+      background: rgba(8, 18, 28, 0.92); border: 1px solid var(--line);
+      color: #dffef7; font-size: 12px; padding: 5px 10px; border-radius: 8px;
+      white-space: nowrap; letter-spacing: 0.04em;
+      opacity: 0; transition: opacity 0.15s;
+    }
+    #tooltip.show { opacity: 1; }
+    #tooltip b { color: var(--acc2); font-weight: 600; }
+
+    /* ---------- 移动端 ---------- */
+    @media (max-width: 640px) {
+      .hud-top { gap: 8px; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); }
+      .back { height: 30px; padding: 0 11px; font-size: 12px; }
+      .brand h1 { font-size: 15px; letter-spacing: 0.28em; }
+      .brand p { display: none; }
+      .stats span { height: 24px; padding: 0 9px; font-size: 11px; }
+      .stats .chip-extra { display: none; }
+      .route-switch { max-width: calc(100vw - 24px); }
+      .route-switch button { padding: 8px 13px; font-size: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="fx"></canvas>
+
+    <header class="hud hud-top">
+      <a class="back" href="./index.html">‹ 返回</a>
+      <div class="brand">
+        <h1>行迹轨迹</h1>
+        <p>走过的路，正在延伸</p>
+      </div>
+      <div class="stats" id="stats"></div>
+    </header>
+
+    <div class="hud route-switch" id="routeSwitch" role="group" aria-label="轨迹显示切换"></div>
+    <div class="hud credit">示意地图 · 边界数据源自高德系（DataV.GeoAtlas）· 仅供参考</div>
+    <div id="cardLayer"><div id="tooltip"></div></div>
+  </div>
+
+  <script src="./fog-china.js"></script>
+  <script src="./fog-routes.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    /* ================= 基础数据 ================= */
+    var ROUTES = (window.FOG_ROUTES || []).map(function (r) {
+      return {
+        id: String(r.id || ''),
+        name: String(r.name || r.id || '轨迹'),
+        tag: String(r.tag || r.name || ''),
+        color: /^#[0-9a-fA-F]{6}$/.test(r.color) ? r.color : '#ffb454',
+        pts: (r.points || []).map(function (p) {
+          return { lng: +p[0], lat: +p[1], name: p.length > 2 ? String(p[2]) : '' };
+        }).filter(function (p) { return isFinite(p.lng) && isFinite(p.lat); })
+      };
+    }).filter(function (r) { return r.id && r.pts.length >= 2; });
+
+    var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var stage = document.getElementById('stage');
+    var fx = document.getElementById('fx');
+    var ctx = fx.getContext('2d');
+    var statsEl = document.getElementById('stats');
+    var tooltip = document.getElementById('tooltip');
+
+    // 轨迹显隐：只记被关闭的 id，默认全部显示
+    var routeHidden = {};
+    try {
+      var savedRoutes = JSON.parse(localStorage.getItem('track:routes:1') || '{}');
+      if (savedRoutes && typeof savedRoutes === 'object') routeHidden = savedRoutes;
+    } catch (e) { /* 隐私模式下 localStorage 不可用 */ }
+    function routeOn(r) { return !routeHidden[r.id]; }
+    function routesVisible() {
+      return ROUTES.some(function (r) { return routeOn(r); });
+    }
+
+    /* ================= 底图几何 =================
+     * 与 fog.html 同源：中国省级边界 + 九段线（内嵌自绘，无外部底图）。
+     * 基准投影：等经纬示意投影（经向按中纬度收缩），整图缩放平移由 view 控制。 */
+    var bbox = { lng0: 73, lng1: 135.5, lat0: 3.5, lat1: 53.8 };
+    (function () {
+      var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      function eachGeom(g, fn) {
+        if (!g) return;
+        var t = g.type, c = g.coordinates || [];
+        if (t === 'Polygon') c.forEach(function (ring) { fn(ring); });
+        else if (t === 'MultiPolygon') c.forEach(function (p) { p.forEach(function (ring) { fn(ring); }); });
+        else if (t === 'LineString') fn(c);
+        else if (t === 'MultiLineString') c.forEach(fn);
+      }
+      (window.FOG_CHINA || { features: [] }).features.forEach(function (f) { eachGeom(f.geometry, fn); });
+      function fn(pt) {
+        if (pt[0] < x0) x0 = pt[0]; if (pt[0] > x1) x1 = pt[0];
+        if (pt[1] < y0) y0 = pt[1]; if (pt[1] > y1) y1 = pt[1];
+      }
+      if (x1 > x0 && y1 > y0) bbox = { lng0: x0, lng1: x1, lat0: y0, lat1: y1 };
+    })();
+    var LATK = Math.cos((bbox.lat0 + bbox.lat1) / 2 * Math.PI / 180);
+    var BASEW = 1000;
+    var BASEK = BASEW / ((bbox.lng1 - bbox.lng0) * LATK);
+    var W = (bbox.lng1 - bbox.lng0) * LATK * BASEK;
+    var H = (bbox.lat1 - bbox.lat0) * BASEK;
+
+    // 底图 Path2D：陆地填充+描边共用一条路径（evenodd 处理孔洞），九段线单独描边
+    var chinaPath = new Path2D();
+    var jdPath = new Path2D();
+    (function () {
+      var features = (window.FOG_CHINA || { features: [] }).features;
+      features.forEach(function (f) {
+        var g = f.geometry;
+        if (!g) return;
+        var isJd = f.properties && f.properties.adcode === '100000_JD';
+        if (g.type === 'LineString') {
+          tracePath(jdPath, g.coordinates);
+        } else if (g.type === 'MultiLineString') {
+          g.coordinates.forEach(function (l) { tracePath(jdPath, l); });
+        } else if (isJd) {
+          // 九段线各段以细长多边形存储：只描边、不填充
+          eachPolygonRing(g, function (ring) { tracePath(jdPath, ring); });
+        } else {
+          eachPolygonRing(g, function (ring) { tracePath(chinaPath, ring); });
+        }
+      });
+      function eachPolygonRing(g, fn) {
+        if (g.type === 'Polygon') g.coordinates.forEach(fn);
+        else if (g.type === 'MultiPolygon') g.coordinates.forEach(function (poly) { poly.forEach(fn); });
+      }
+      function tracePath(path, ring) {
+        for (var i = 0; i < ring.length; i++) {
+          var b = proj(ring[i][0], ring[i][1]);
+          if (i === 0) path.moveTo(b.x, b.y); else path.lineTo(b.x, b.y);
+        }
+        path.closePath();
+      }
+    })();
+
+    function proj(lng, lat) {
+      return { x: (lng - bbox.lng0) * LATK * BASEK, y: (bbox.lat1 - lat) * BASEK };
+    }
+
+    /* ================= 视图（平移 / 缩放） ================= */
+    var view = { s: 1, tx: 0, ty: 0, minS: 0.2, maxS: 8 };
+    var viewDirty = false; // 用户手动缩放/平移过后，尺寸变化不再重置视野
+
+    function computeZoomBounds() {
+      var pad = Math.min(stage.clientWidth, stage.clientHeight) * 0.07 + 12;
+      view.minS = Math.min(
+        (stage.clientWidth - 2 * pad) / W,
+        (stage.clientHeight - 2 * pad) / H
+      );
+      view.maxS = view.minS * 10;
+    }
+
+    function fitView() {
+      computeZoomBounds();
+      view.s = view.minS;
+      view.tx = (stage.clientWidth - W * view.s) / 2;
+      view.ty = (stage.clientHeight - H * view.s) / 2;
+    }
+
+    function clampPan() {
+      var ww = W * view.s, wh = H * view.s;
+      var sw = stage.clientWidth, sh = stage.clientHeight, m = 40;
+      if (ww <= sw) view.tx = (sw - ww) / 2;
+      else view.tx = Math.min(Math.max(view.tx, sw - ww - m), m);
+      if (wh <= sh) view.ty = (sh - wh) / 2;
+      else view.ty = Math.min(Math.max(view.ty, sh - wh - m), m);
+    }
+
+    function zoomAt(cx, cy, factor) {
+      var ns = Math.min(Math.max(view.s * factor, view.minS), view.maxS);
+      var k = ns / view.s;
+      view.tx = cx - (cx - view.tx) * k;
+      view.ty = cy - (cy - view.ty) * k;
+      view.s = ns;
+      viewDirty = true;
+      clampPan();
+      scheduleRedraw();
+    }
+
+    // 经纬度 → 容器 CSS 像素
+    function cssXY(lng, lat) {
+      var b = proj(lng, lat);
+      return { x: b.x * view.s + view.tx, y: b.y * view.s + view.ty };
+    }
+    function canvasXY(lng, lat) {
+      var p = cssXY(lng, lat);
+      return { x: p.x * dpr, y: p.y * dpr };
+    }
+
+    /* ================= 工具函数 ================= */
+    // 球面距离（km），用于里程估算
+    function distKm(a, b) {
+      var rad = Math.PI / 180, R = 6371;
+      var dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+      var s = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      return 2 * R * Math.asin(Math.sqrt(s));
+    }
+
+    // 轨迹主色 → rgba / 提亮（文字用）
+    function hexRGB(hex) {
+      var n = parseInt(hex.slice(1), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    function rgba(hex, a) {
+      var c = hexRGB(hex);
+      return 'rgba(' + c[0] + ', ' + c[1] + ', ' + c[2] + ', ' + a + ')';
+    }
+    function mixWhite(hex, k) {
+      var c = hexRGB(hex).map(function (v) { return Math.round(v + (255 - v) * k); });
+      return 'rgb(' + c[0] + ', ' + c[1] + ', ' + c[2] + ')';
+    }
+
+    var dpr = 1;
+    var rafId = 0;
+
+    function sizeFx() {
+      var w = stage.clientWidth, h = stage.clientHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      fx.width = Math.max(1, Math.round(w * dpr));
+      fx.height = Math.max(1, Math.round(h * dpr));
+      fx.style.width = w + 'px';
+      fx.style.height = h + 'px';
+    }
+
+    /* ================= HUD ================= */
+    function buildStats() {
+      // 里程按抽稀后的折线估算，整百取整（示意值）
+      var totalKm = 0, stops = 0;
+      ROUTES.forEach(function (r) {
+        for (var i = 1; i < r.pts.length; i++) totalKm += distKm(r.pts[i - 1], r.pts[i]);
+        stops += r.pts.filter(function (p) { return p.name; }).length;
+      });
+      statsEl.innerHTML = '';
+      addChip('<b>' + ROUTES.length + '</b> 条轨迹');
+      if (totalKm > 0) addChip('全程约 <b>' + Math.round(totalKm / 100) * 100 + '</b> km', 'chip-extra');
+      if (stops > 0) addChip('途经 <b>' + stops + '</b> 地', 'chip-extra');
+      function addChip(html, extra) {
+        var s = document.createElement('span');
+        if (extra) s.className = extra;
+        s.innerHTML = html;
+        statsEl.appendChild(s);
+      }
+    }
+
+    /* ================= 轨迹开关 ================= */
+    function buildRouteSwitch() {
+      var wrap = document.getElementById('routeSwitch');
+      wrap.innerHTML = '';
+      if (!ROUTES.length) { wrap.style.display = 'none'; return; }
+      ROUTES.forEach(function (r) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = r.name;
+        b.addEventListener('click', function () { toggleRoute(r); });
+        r._btn = b;
+        wrap.appendChild(b);
+      });
+      syncRouteButtons();
+    }
+
+    function toggleRoute(r) {
+      if (routeHidden[r.id]) delete routeHidden[r.id]; else routeHidden[r.id] = true;
+      try { localStorage.setItem('track:routes:1', JSON.stringify(routeHidden)); } catch (e) {}
+      syncRouteButtons();
+      hideTooltip();
+      scheduleRedraw();
+    }
+
+    function syncRouteButtons() {
+      ROUTES.forEach(function (r) {
+        if (!r._btn) return;
+        var on = routeOn(r);
+        r._btn.classList.toggle('active', on);
+        r._btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        // 按钮色随轨迹主色
+        r._btn.style.background = on ? rgba(r.color, 0.15) : '';
+        r._btn.style.color = on ? mixWhite(r.color, 0.35) : '';
+        r._btn.style.boxShadow = on
+          ? 'inset 0 0 0 1px ' + rgba(r.color, 0.45) + ', 0 0 16px ' + rgba(r.color, 0.18)
+          : '';
+      });
+    }
+
+    /* ================= 渲染 ================= */
+    function needRaf() { return routesVisible() && !reduceMotion; }
+
+    function loop(t) {
+      rafId = 0;
+      draw(t || 0);
+      if (needRaf()) rafId = requestAnimationFrame(loop);
+    }
+
+    // 事件驱动的重绘：同步立即绘制（交互零延迟），流动虚线再交给 rAF 连续帧
+    function scheduleRedraw() {
+      draw(performance.now());
+      if (needRaf() && !rafId) rafId = requestAnimationFrame(loop);
+    }
+
+    function draw(t) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      // 背景渐变
+      var bg = ctx.createRadialGradient(
+        fx.width / 2, fx.height * 0.42, 0,
+        fx.width / 2, fx.height * 0.42, Math.max(fx.width, fx.height) * 0.75
+      );
+      bg.addColorStop(0, '#0e1c2b');
+      bg.addColorStop(1, '#070d14');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, fx.width, fx.height);
+
+      // 世界坐标系：底图 + 经纬网
+      ctx.save();
+      ctx.setTransform(view.s * dpr, 0, 0, view.s * dpr, view.tx * dpr, view.ty * dpr);
+      drawGraticule();
+      ctx.fillStyle = '#0f1e2c';
+      ctx.fill(chinaPath, 'evenodd');
+      ctx.lineWidth = 1 / view.s;
+      ctx.strokeStyle = 'rgba(120, 210, 200, 0.16)';
+      ctx.stroke(chinaPath);
+      ctx.lineWidth = 1.3 / view.s;
+      ctx.strokeStyle = 'rgba(110, 220, 205, 0.4)';
+      ctx.stroke(jdPath);
+      ctx.restore();
+
+      // 轨迹图层（屏幕像素尺度，缩放下观感一致）
+      drawRoutes(t || 0);
+    }
+
+    function drawGraticule() {
+      ctx.strokeStyle = 'rgba(120, 200, 220, 0.05)';
+      ctx.lineWidth = 1 / view.s;
+      var lng, lat, a, b;
+      var lngA = bbox.lng0 - 30, lngB = bbox.lng1 + 30;
+      var latA = Math.max(bbox.lat0 - 12, -75), latB = Math.min(bbox.lat1 + 12, 80);
+      for (lng = Math.ceil(lngA / 5) * 5; lng <= lngB; lng += 5) {
+        a = proj(lng, latB); b = proj(lng, latA);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+      for (lat = Math.ceil(latA / 5) * 5; lat <= latB; lat += 5) {
+        a = proj(lngA, lat); b = proj(lngB, lat);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+    }
+
+    /* ================= 轨迹图层 ================= */
+    function routePathOf(pts) {
+      var path = new Path2D();
+      for (var i = 0; i < pts.length; i++) {
+        if (i === 0) path.moveTo(pts[i].x, pts[i].y); else path.lineTo(pts[i].x, pts[i].y);
+      }
+      return path;
+    }
+
+    // 行迹路线：柔光底衬 + 主线 + 流动光段；核心节点带名称（标签避让，放大渐显）
+    function drawRoutes(t) {
+      ROUTES.forEach(function (r) {
+        if (!routeOn(r)) return;
+        var pts = r.pts.map(function (p) { return canvasXY(p.lng, p.lat); });
+        var path = routePathOf(pts);
+
+        ctx.save();
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.strokeStyle = rgba(r.color, 0.16);
+        ctx.lineWidth = 8 * dpr;
+        ctx.stroke(path);
+        ctx.strokeStyle = rgba(r.color, 0.85);
+        ctx.lineWidth = 2.4 * dpr;
+        ctx.stroke(path);
+        if (!reduceMotion) {
+          ctx.setLineDash([3 * dpr, 15 * dpr]);
+          ctx.lineDashOffset = -((t / 55) % 18) * dpr;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.lineWidth = 3.4 * dpr;
+          ctx.stroke(path);
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+
+        var labelXs = [];
+        r.pts.forEach(function (p, i) {
+          var q = pts[i];
+          if (q.x < -60 || q.x > fx.width + 60 || q.y < -60 || q.y > fx.height + 60) return;
+          drawRouteNode(q, r, i === 0 || i === r.pts.length - 1);
+          // 标签避让：与所有已放置标签保持横向间距（路线可能折返，取绝对值）
+          var ok = labelXs.every(function (x) { return Math.abs(q.x - x) >= 50 * dpr; });
+          if (p.name && ok) {
+            drawRouteLabel(p.name, q, r);
+            labelXs.push(q.x);
+          }
+        });
+      });
+    }
+
+    function drawRouteNode(p, r, isEnd) {
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 9 * dpr);
+      g.addColorStop(0, rgba(r.color, 0.45));
+      g.addColorStop(1, rgba(r.color, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 9 * dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = rgba(r.color, 0.95);
+      ctx.beginPath(); ctx.arc(p.x, p.y, (isEnd ? 3 : 2.1) * dpr, 0, Math.PI * 2); ctx.fill();
+      if (isEnd) {
+        // 起 / 终点加白圈
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 4.8 * dpr, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+
+    function drawRouteLabel(text, p, r) {
+      ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
+      ctx.fillStyle = mixWhite(r.color, 0.25);
+      ctx.font = (10.5 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, p.x, p.y + 18 * dpr);
+      ctx.shadowBlur = 0;
+    }
+
+    /* ================= 悬停 / 点按提示 ================= */
+    function hitNode(clientX, clientY) {
+      var rect = stage.getBoundingClientRect();
+      var x = clientX - rect.left, y = clientY - rect.top;
+      var best = null, bestD = 18;
+      ROUTES.forEach(function (r) {
+        if (!routeOn(r)) return;
+        r.pts.forEach(function (p) {
+          if (!p.name) return;
+          var q = cssXY(p.lng, p.lat);
+          var d = Math.hypot(q.x - x, q.y - y);
+          if (d < bestD) { bestD = d; best = { route: r, node: p }; }
+        });
+      });
+      return best;
+    }
+
+    function showNodeTooltip(rn) {
+      var p = cssXY(rn.node.lng, rn.node.lat);
+      if (!p) return;
+      tooltip.innerHTML = '';
+      var b = document.createElement('b'); b.textContent = rn.node.name;
+      tooltip.appendChild(b);
+      tooltip.appendChild(document.createTextNode(' · ' + rn.route.tag));
+      tooltip.style.left = p.x + 'px';
+      tooltip.style.top = (p.y - 14) + 'px';
+      tooltip.classList.add('show');
+    }
+    function hideTooltip() { tooltip.classList.remove('show'); }
+
+    /* ================= 画布交互：拖拽 / 缩放 / 点按 ================= */
+    var pointers = new Map();
+    var panState = null;   // {sx, sy, tx0, ty0, moved, t0}
+    var pinchState = null; // {dist, cx, cy, s, tx, ty}
+
+    function localXY(e) {
+      var r = fx.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+    function pinchBase() {
+      var ps = Array.from(pointers.values());
+      var dx = ps[0].x - ps[1].x, dy = ps[0].y - ps[1].y;
+      return {
+        dist: Math.max(Math.hypot(dx, dy), 1),
+        cx: (ps[0].x + ps[1].x) / 2,
+        cy: (ps[0].y + ps[1].y) / 2,
+        s: view.s, tx: view.tx, ty: view.ty
+      };
+    }
+
+    fx.addEventListener('pointerdown', function (e) {
+      try { fx.setPointerCapture(e.pointerId); } catch (err) { /* 指针可能已失效，忽略 */ }
+      var p = localXY(e);
+      pointers.set(e.pointerId, p);
+      if (pointers.size === 1) {
+        panState = { sx: p.x, sy: p.y, tx0: view.tx, ty0: view.ty, moved: false, t0: Date.now() };
+        pinchState = null;
+        fx.classList.add('dragging');
+      } else if (pointers.size === 2) {
+        panState = null;
+        pinchState = pinchBase();
+      }
+    });
+
+    fx.addEventListener('pointermove', function (e) {
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, localXY(e));
+
+      if (pointers.size === 2 && pinchState) {
+        var b = pinchBase();
+        var ns = Math.min(Math.max(pinchState.s * b.dist / pinchState.dist, view.minS), view.maxS);
+        var k = ns / pinchState.s;
+        view.s = ns;
+        view.tx = b.cx - (pinchState.cx - pinchState.tx) * k;
+        view.ty = b.cy - (pinchState.cy - pinchState.ty) * k;
+        viewDirty = true;
+        clampPan();
+        hideTooltip();
+        scheduleRedraw();
+        return;
+      }
+      if (pointers.size === 1 && panState) {
+        var p = pointers.get(e.pointerId);
+        if (Math.hypot(p.x - panState.sx, p.y - panState.sy) > 6) panState.moved = true;
+        if (panState.moved) {
+          view.tx = panState.tx0 + p.x - panState.sx;
+          view.ty = panState.ty0 + p.y - panState.sy;
+          viewDirty = true;
+          clampPan();
+          hideTooltip();
+          scheduleRedraw();
+        }
+        return;
+      }
+      // 悬停（桌面）
+      var hit = hitNode(e.clientX, e.clientY);
+      fx.classList.toggle('hover-node', !!hit);
+      if (hit) showNodeTooltip(hit); else hideTooltip();
+    });
+
+    function endPointer(e) {
+      var wasSingle = pointers.size === 1;
+      pointers.delete(e.pointerId);
+      if (wasSingle && panState && !panState.moved && Date.now() - panState.t0 < 600) {
+        // 点按（未拖动）→ 命中节点则提示，否则收起
+        var rn = hitNode(e.clientX, e.clientY);
+        if (rn) showNodeTooltip(rn); else hideTooltip();
+      }
+      panState = null;
+      pinchState = null;
+      if (pointers.size === 1) {
+        var rest = Array.from(pointers.values())[0];
+        panState = { sx: rest.x, sy: rest.y, tx0: view.tx, ty0: view.ty, moved: true, t0: Date.now() };
+      }
+      if (pointers.size === 0) fx.classList.remove('dragging');
+    }
+    fx.addEventListener('pointerup', endPointer);
+    fx.addEventListener('pointercancel', endPointer);
+
+    fx.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var p = localXY(e);
+      zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0016));
+    }, { passive: false });
+
+    fx.addEventListener('dblclick', function (e) {
+      var p = localXY(e);
+      zoomAt(p.x, p.y, 1.9);
+    });
+
+    fx.addEventListener('mouseleave', hideTooltip);
+
+    /* ================= 启动 ================= */
+    function init() {
+      sizeFx();
+      fitView();
+      buildStats();
+      buildRouteSwitch();
+
+      window.addEventListener('resize', function () {
+        sizeFx();
+        if (viewDirty) {
+          computeZoomBounds();
+          view.s = Math.min(Math.max(view.s, view.minS), view.maxS);
+          clampPan();
+        } else {
+          fitView();
+        }
+        scheduleRedraw();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') hideTooltip();
+      });
+
+      scheduleRedraw();
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>
