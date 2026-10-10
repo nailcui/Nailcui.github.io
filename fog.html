@@ -29,7 +29,11 @@
 
     #stage { position: relative; width: 100%; height: 100vh; height: 100dvh; }
     #map { position: absolute; inset: 0; background: var(--bg); }
-    /* 特效画布：盖在底图之上、标记之下；迷雾/脉冲两种样式在此绘制 */
+    /* 天地图底图无暗色样式，用 CSS 滤镜反色成夜间效果（只作用于底图容器） */
+    #map.dark-tiles {
+      filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.65);
+    }
+    /* 特效画布：盖在底图之上；迷雾/脉冲/霓虹光圈在此绘制 */
     #fx { position: absolute; inset: 0; z-index: 100; pointer-events: none; }
 
     /* ---------- HUD ---------- */
@@ -91,23 +95,6 @@
       pointer-events: none; white-space: nowrap;
     }
 
-    /* ---------- 地图标记（高德模式）---------- */
-    .city-label {
-      font-size: 11px; font-weight: 500; color: #f2fffc; letter-spacing: 0.08em;
-      text-shadow: 0 0 6px rgba(77, 240, 216, 0.9), 0 1px 3px rgba(0, 0, 0, 0.9);
-      transform: translateY(-13px); white-space: nowrap; pointer-events: none;
-    }
-    .city-hotspot {
-      width: 30px; height: 30px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center; cursor: pointer;
-    }
-    .city-hotspot i {
-      width: 5px; height: 5px; border-radius: 50%; background: #eafffb;
-      box-shadow: 0 0 10px 2px rgba(77, 240, 216, 0.85);
-      opacity: 0.95; transition: transform 0.2s, background 0.2s;
-    }
-    .city-hotspot:hover i, .city-hotspot.active i { transform: scale(1.7); background: #fff; }
-
     /* ---------- 城市卡片 ---------- */
     .city-card {
       position: relative; width: min(280px, 80vw);
@@ -130,7 +117,7 @@
     .cc-date { font-size: 12px; color: #bfe0da; }
     .cc-note { font-size: 12px; color: #93b8b1; line-height: 1.6; margin-top: 7px; }
 
-    /* 演示模式卡片容器（真实地图模式由高德 InfoWindow 承载） */
+    /* 卡片 / 悬停提示浮层 */
     #cardLayer { position: absolute; inset: 0; z-index: 1300; pointer-events: none; }
     .demo-card-wrap {
       position: absolute; transform: translate(-50%, -100%);
@@ -210,27 +197,27 @@
     </header>
 
     <div class="hud mode-switch" id="modeSwitch" role="tablist" aria-label="点亮样式切换">
-      <button type="button" data-mode="neon" role="tab">✦ 霓虹城区</button>
+      <button type="button" data-mode="neon" role="tab">✦ 霓虹光圈</button>
       <button type="button" data-mode="fog" role="tab">◈ 迷雾探索</button>
       <button type="button" data-mode="pulse" role="tab">✧ 星火脉冲</button>
     </div>
 
-    <div class="hud credit" id="credit">底图与行政区划数据 © 高德地图</div>
+    <div class="hud credit" id="credit">底图 © 天地图</div>
     <div id="cardLayer"><div id="tooltip"></div></div>
 
     <div class="guide" id="setupGuide" hidden>
       <div class="guide-card">
         <h2>世界迷雾</h2>
-        <p class="sub" id="guideMsg">尚未配置高德地图 Key，先体验演示模式，或按以下步骤免费开通（约 3 分钟）。</p>
+        <p class="sub" id="guideMsg">尚未配置天地图 Key，先体验演示模式，或按以下步骤免费开通（约 3 分钟）。</p>
         <ol>
-          <li>注册 / 登录高德开放平台 <a href="https://lbs.amap.com/" target="_blank" rel="noopener">lbs.amap.com</a>（个人免费）</li>
-          <li>控制台 → 应用管理 → 创建应用 → 添加 Key，服务平台选「Web端(JS API)」</li>
-          <li>复制 Key 与安全密钥（securityJsCode）</li>
-          <li>编辑仓库中的 <code>fog-data.js</code>，填入 <code>FOG_CONFIG.amap</code>，刷新本页</li>
+          <li>注册 / 登录天地图 <a href="https://console.tianditu.gov.cn" target="_blank" rel="noopener">console.tianditu.gov.cn</a>（个人免费，需实名认证）</li>
+          <li>控制台 → 开发资源 → 应用管理 → 创建新应用，应用类型选「浏览器端」</li>
+          <li>复制生成的 Key（tk）</li>
+          <li>编辑仓库中的 <code>fog-data.js</code>，填入 <code>FOG_CONFIG.tianditu.key</code>，刷新本页</li>
         </ol>
         <div class="guide-actions">
           <button type="button" class="btn primary" id="demoBtn">✧ 进入演示模式</button>
-          <a class="btn" href="https://console.amap.com/dev/key/app" target="_blank" rel="noopener">前往创建 Key</a>
+          <a class="btn" href="https://console.tianditu.gov.cn/api/key" target="_blank" rel="noopener">前往创建 Key</a>
         </div>
       </div>
     </div>
@@ -244,7 +231,7 @@
     /* ================= 基础数据 ================= */
     var MODES = ['neon', 'fog', 'pulse'];
     var cfg = window.FOG_CONFIG || {};
-    var amapCfg = cfg.amap || {};
+    var tdtCfg = cfg.tianditu || {};
     var CITIES = (window.FOG_CITIES || []).slice().sort(function (a, b) {
       return String(a.date || '9999').localeCompare(String(b.date || '9999'));
     });
@@ -262,9 +249,7 @@
     var guide = document.getElementById('setupGuide');
     var guideMsg = document.getElementById('guideMsg');
 
-    var map = null;            // AMap.Map
-    var infoWindow = null;     // AMap.InfoWindow
-    var districtSearch = null;
+    var map = null;            // T.Map（天地图）
     var mode = MODES.indexOf(cfg.style) >= 0 ? cfg.style : 'neon';
     try {
       var saved = localStorage.getItem('fog:mode');
@@ -274,12 +259,51 @@
     var dpr = 1;
     var rafId = 0;
     var activeCity = null;
+    var cardWrap = null;
     var demo = { active: false, k: 1, fx0: 0, fy0: 0, latK: Math.cos(35.5 * Math.PI / 180) };
     // 演示模式的抽象底图范围（仅经纬网示意，不绘制任何行政区划）
     var DEMO_BBOX = { lng0: 72.5, lng1: 135.5, lat0: 17.5, lat1: 54.5 };
 
+    /* ================= GCJ-02 → WGS-84 =================
+     * 天地图使用 CGCS2000（≈WGS84）坐标；城市数据按 GCJ-02 维护，
+     * 这里做标准单次逼近转换，误差米级，城市尺度下可忽略。 */
+    function gcj02ToWgs84(lng, lat) {
+      if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lng, lat];
+      var a = 6378245.0, ee = 0.00669342162296594323;
+      var dlat = transformLat(lng - 105.0, lat - 35.0);
+      var dlng = transformLng(lng - 105.0, lat - 35.0);
+      var radlat = lat / 180.0 * Math.PI;
+      var magic = Math.sin(radlat);
+      magic = 1 - ee * magic * magic;
+      var sqrtmagic = Math.sqrt(magic);
+      dlat = (dlat * 180.0) / ((a * (1 - ee)) / (magic * sqrtmagic) * Math.PI);
+      dlng = (dlng * 180.0) / (a / sqrtmagic * Math.cos(radlat) * Math.PI);
+      return [lng * 2 - (lng + dlng), lat * 2 - (lat + dlat)];
+    }
+    function transformLat(x, y) {
+      var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+      ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+      ret += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0;
+      ret += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0;
+      return ret;
+    }
+    function transformLng(x, y) {
+      var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+      ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+      ret += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0;
+      ret += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0;
+      return ret;
+    }
+
     /* ================= 工具函数 ================= */
     function hasCoords(c) { return isFinite(c.lng) && isFinite(c.lat); }
+
+    // Web Mercator：经纬度 → 世界像素比例（用于天地图坐标换算的兜底）
+    function mercX(lng) { return (lng + 180) / 360; }
+    function mercY(lat) {
+      var s = Math.sin(Math.max(-85.05, Math.min(85.05, lat)) * Math.PI / 180);
+      return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+    }
 
     // 经纬度 → 容器 CSS 像素
     function cssXY(lng, lat) {
@@ -289,12 +313,26 @@
           y: demo.fy0 + (DEMO_BBOX.lat1 - lat) * demo.k
         };
       }
-      if (!map) return null;
-      var p = map.lngLatToContainer([lng, lat]);
-      if (!p) return null;
-      var x = typeof p.x === 'number' ? p.x : p.getX();
-      var y = typeof p.y === 'number' ? p.y : p.getY();
-      return { x: x, y: y };
+      if (!map || !window.T) return null;
+      try {
+        var p = map.lngLatToContainerPoint(new T.LngLat(lng, lat));
+        if (p) {
+          var x = typeof p.x === 'number' ? p.x : p.getX();
+          var y = typeof p.y === 'number' ? p.y : p.getY();
+          if (isFinite(x) && isFinite(y)) return { x: x, y: y };
+        }
+      } catch (e) { /* 地图未就绪时走兜底投影 */ }
+      // 兜底：按地图中心与缩放级别手工换算（Web Mercator）
+      var zoom = map.getZoom();
+      var ctr = map.getCenter();
+      if (typeof zoom !== 'number' || !ctr) return null;
+      var scale = 256 * Math.pow(2, zoom);
+      var clng = typeof ctr.lng === 'number' ? ctr.lng : ctr.getLng();
+      var clat = typeof ctr.lat === 'number' ? ctr.lat : ctr.getLat();
+      return {
+        x: mapDiv.clientWidth / 2 + (mercX(lng) - mercX(clng)) * scale,
+        y: mapDiv.clientHeight / 2 + (mercY(lat) - mercY(clat)) * scale
+      };
     }
 
     function canvasXY(lng, lat) {
@@ -316,21 +354,6 @@
       fx.height = Math.max(1, Math.round(h * dpr));
       fx.style.width = w + 'px';
       fx.style.height = h + 'px';
-    }
-
-    function cityPath(c) {
-      var path = new Path2D();
-      var rings = c._rings || [];
-      for (var i = 0; i < rings.length; i++) {
-        var ring = rings[i];
-        for (var j = 0; j < ring.length; j++) {
-          var p = canvasXY(ring[j][0], ring[j][1]);
-          if (!p) break;
-          if (j === 0) path.moveTo(p.x, p.y); else path.lineTo(p.x, p.y);
-        }
-        path.closePath();
-      }
-      return path;
     }
 
     /* ================= HUD ================= */
@@ -391,10 +414,59 @@
       if (demo.active) drawDemoBg();
       if (mode === 'fog') drawFog();
       else if (mode === 'pulse') drawPulse(t);
-      else if (demo.active) drawDemoNeon();
+      else if (demo.active || map) drawNeon();
     }
 
-    // —— 样式一：迷雾探索（暗幕 + 城区形状挖空 + 发光边界）——
+    function drawNameLabel(c, p) {
+      ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
+      ctx.fillStyle = '#d9f7f0';
+      ctx.font = (11 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(c.name, p.x, p.y + 22 * dpr);
+      ctx.shadowBlur = 0;
+    }
+
+    function drawCityGlowDot(p) {
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 24 * dpr);
+      g.addColorStop(0, 'rgba(77, 240, 216, 0.4)');
+      g.addColorStop(1, 'rgba(77, 240, 216, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 24 * dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#eafffb';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * dpr, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // —— 样式一：霓虹光圈（城市中心光晕 + 光环 + 名称）——
+    function drawNeon() {
+      if (map && !demo.active) {
+        // 轻微统一色罩，让底图与主题色更融合
+        ctx.fillStyle = 'rgba(10, 20, 32, 0.16)';
+        ctx.fillRect(0, 0, fx.width, fx.height);
+      }
+      CITIES.forEach(function (c) {
+        if (!hasCoords(c)) return;
+        var p = canvasXY(c.lng, c.lat);
+        if (!p) return;
+        var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26 * dpr);
+        g.addColorStop(0, 'rgba(37, 217, 201, 0.5)');
+        g.addColorStop(1, 'rgba(37, 217, 201, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 26 * dpr, 0, Math.PI * 2); ctx.fill();
+
+        ctx.strokeStyle = 'rgba(157, 247, 232, 0.85)';
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.shadowColor = 'rgba(77, 240, 216, 0.9)';
+        ctx.shadowBlur = 8 * dpr;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 7 * dpr, 0, Math.PI * 2); ctx.stroke();
+
+        ctx.fillStyle = '#eafffb';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.4 * dpr, 0, Math.PI * 2); ctx.fill();
+
+        drawNameLabel(c, { x: p.x, y: p.y + 2 * dpr });
+      });
+    }
+
+    // —— 样式二：迷雾探索（暗幕按城市挖空 + 城市微光）——
     function drawFog() {
       ctx.fillStyle = 'rgba(6, 10, 16, 0.93)';
       ctx.fillRect(0, 0, fx.width, fx.height);
@@ -402,62 +474,30 @@
       ctx.save();
       ctx.globalCompositeOperation = 'destination-out';
       CITIES.forEach(function (c) {
-        var p = hasCoords(c) && canvasXY(c.lng, c.lat);
-        if (p) {
-          var r = 72 * dpr;
-          var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-          g.addColorStop(0, 'rgba(0,0,0,0.95)');
-          g.addColorStop(0.7, 'rgba(0,0,0,0.5)');
-          g.addColorStop(1, 'rgba(0,0,0,0)');
-          ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
-        }
-        if (c._rings && c._rings.length) {
-          var path = cityPath(c);
-          ctx.shadowColor = '#000'; ctx.shadowBlur = 16 * dpr;
-          ctx.fillStyle = '#000'; ctx.fill(path, 'evenodd');
-          ctx.lineWidth = 9 * dpr; ctx.strokeStyle = '#000'; ctx.stroke(path);
-        }
-      });
-      ctx.restore();
-
-      // 点亮边界的青色微光
-      ctx.save();
-      ctx.shadowColor = 'rgba(96, 245, 224, 0.9)';
-      ctx.shadowBlur = 10 * dpr;
-      ctx.strokeStyle = 'rgba(110, 246, 226, 0.32)';
-      ctx.lineWidth = 1.3 * dpr;
-      CITIES.forEach(function (c) {
-        if (c._rings && c._rings.length) ctx.stroke(cityPath(c));
+        if (!hasCoords(c)) return;
+        var p = canvasXY(c.lng, c.lat);
+        if (!p) return;
+        var r = 72 * dpr;
+        var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
+        g.addColorStop(0, 'rgba(0,0,0,0.95)');
+        g.addColorStop(0.7, 'rgba(0,0,0,0.5)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
       });
       ctx.restore();
 
       // 拨开迷雾后的城市微光与名称（演示模式无底图细节，靠光斑表达「点亮」）
-      ctx.save();
       CITIES.forEach(function (c) {
         if (!hasCoords(c)) return;
         var p = canvasXY(c.lng, c.lat);
         if (!p) return;
-        var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 24 * dpr);
-        g.addColorStop(0, 'rgba(77, 240, 216, 0.4)');
-        g.addColorStop(1, 'rgba(77, 240, 216, 0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 24 * dpr, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#eafffb';
-        ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * dpr, 0, Math.PI * 2); ctx.fill();
-        if (demo.active) {
-          ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
-          ctx.fillStyle = '#d9f7f0';
-          ctx.font = (11 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(c.name, p.x, p.y + 20 * dpr);
-          ctx.shadowBlur = 0;
-        }
+        drawCityGlowDot(p);
+        if (demo.active) drawNameLabel(c, p);
       });
-      ctx.restore();
     }
 
-    // —— 样式二：星火脉冲（城市中心光点 + 扩散波纹）——
+    // —— 样式三：星火脉冲（城市中心光点 + 扩散波纹）——
     function drawPulse(t) {
       var T = reduceMotion ? 1200 : t;
       CITIES.forEach(function (c) {
@@ -482,44 +522,7 @@
           ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
         }
 
-        if (demo.active) {
-          ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
-          ctx.fillStyle = '#d9f7f0';
-          ctx.font = (11 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(c.name, p.x, p.y + 22 * dpr);
-          ctx.shadowBlur = 0;
-        }
-      });
-    }
-
-    // —— 演示模式的「霓虹城区」：无边界数据，用光斑代替 ——
-    function drawDemoNeon() {
-      CITIES.forEach(function (c) {
-        if (!hasCoords(c)) return;
-        var p = canvasXY(c.lng, c.lat);
-        if (!p) return;
-        var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26 * dpr);
-        g.addColorStop(0, 'rgba(37, 217, 201, 0.5)');
-        g.addColorStop(1, 'rgba(37, 217, 201, 0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 26 * dpr, 0, Math.PI * 2); ctx.fill();
-
-        ctx.strokeStyle = 'rgba(157, 247, 232, 0.85)';
-        ctx.lineWidth = 1.2 * dpr;
-        ctx.shadowColor = 'rgba(77, 240, 216, 0.9)';
-        ctx.shadowBlur = 8 * dpr;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 7 * dpr, 0, Math.PI * 2); ctx.stroke();
-
-        ctx.fillStyle = '#eafffb';
-        ctx.beginPath(); ctx.arc(p.x, p.y, 2.4 * dpr, 0, Math.PI * 2); ctx.fill();
-
-        ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4 * dpr;
-        ctx.fillStyle = '#eafdfa';
-        ctx.font = (11 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(c.name, p.x, p.y + 24 * dpr);
-        ctx.shadowBlur = 0;
+        if (demo.active || map) drawNameLabel(c, { x: p.x, y: p.y + 4 * dpr });
       });
     }
 
@@ -552,15 +555,6 @@
       try { localStorage.setItem('fog:mode', m); } catch (e) {}
       document.body.setAttribute('data-mode', m);
       syncModeButtons();
-
-      if (map) {
-        var neon = m === 'neon';
-        CITIES.forEach(function (c) {
-          if (neon && c._rings && !c._polys) buildPolys(c); // 迷雾模式期间加载好的边界，切回时补建
-          if (c._polys) c._polys.forEach(function (p) { neon ? p.show() : p.hide(); });
-          if (c._label) (m === 'fog') ? c._label.hide() : c._label.show();
-        });
-      }
       closeCard();
       hideTooltip();
       scheduleRedraw();
@@ -603,10 +597,18 @@
       return card;
     }
 
-    function markActive(c) {
-      CITIES.forEach(function (x) {
-        if (x._hotEl) x._hotEl.classList.toggle('active', x === c);
-      });
+    function positionCard(p) {
+      if (!cardWrap) return;
+      var w = Math.min(280, stage.clientWidth * 0.8);
+      cardWrap.style.left = Math.min(Math.max(p.x, w / 2 + 8), stage.clientWidth - w / 2 - 8) + 'px';
+      cardWrap.style.top = Math.max(p.y - 14, 130) + 'px';
+    }
+
+    function updateCardPosition() {
+      if (cardWrap && activeCity) {
+        var p = cssXY(activeCity.lng, activeCity.lat);
+        if (p) positionCard(p);
+      }
     }
 
     function openCard(c) {
@@ -614,38 +616,20 @@
       closeCard();
       hideTooltip();
       activeCity = c;
-      markActive(c);
-      var ll = hasCoords(c) ? [c.lng, c.lat] : (c._center || null);
-      if (!ll) return;
-      if (demo.active) {
-        var p = cssXY(ll[0], ll[1]);
-        if (!p) return;
-        var wrap = document.createElement('div');
-        wrap.className = 'demo-card-wrap';
-        wrap.appendChild(buildCardEl(c));
-        cardLayer.appendChild(wrap);
-        var w = Math.min(280, stage.clientWidth * 0.8);
-        wrap.style.left = Math.min(Math.max(p.x, w / 2 + 8), stage.clientWidth - w / 2 - 8) + 'px';
-        wrap.style.top = Math.max(p.y - 14, 120) + 'px';
-      } else if (map) {
-        if (!infoWindow) {
-          infoWindow = new AMap.InfoWindow({
-            isCustom: true,
-            anchor: 'bottom-center',
-            offset: new AMap.Pixel(0, -16)
-          });
-        }
-        infoWindow.setContent(buildCardEl(c));
-        infoWindow.open(map, ll);
-      }
+      if (!hasCoords(c)) return;
+      var p = cssXY(c.lng, c.lat);
+      if (!p) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'demo-card-wrap';
+      wrap.appendChild(buildCardEl(c));
+      cardLayer.appendChild(wrap);
+      cardWrap = wrap;
+      positionCard(p);
     }
 
     function closeCard() {
       activeCity = null;
-      markActive(null);
-      if (infoWindow) infoWindow.close();
-      var wraps = cardLayer.querySelectorAll('.demo-card-wrap');
-      Array.prototype.forEach.call(wraps, function (n) { n.parentNode.removeChild(n); });
+      if (cardWrap) { cardWrap.parentNode.removeChild(cardWrap); cardWrap = null; }
     }
 
     function showTooltip(c) {
@@ -675,158 +659,85 @@
       return best;
     }
 
-    /* ================= 高德模式 ================= */
-    function loadAMap() {
-      window._AMapSecurityConfig = { securityJsCode: amapCfg.securityJsCode || '' };
+    // 地图 / 画布上的点击与悬停（演示模式与天地图模式共用同一套命中逻辑）
+    function onSurfaceClick(e) {
+      var c = hitCity(e.clientX, e.clientY);
+      if (c) openCard(c); else closeCard();
+    }
+    function onSurfaceMove(e) {
+      var c = hitCity(e.clientX, e.clientY);
+      if (c) { showTooltip(c); return true; }
+      hideTooltip();
+      return false;
+    }
+
+    /* ================= 天地图模式 ================= */
+    function loadTianditu() {
       var s = document.createElement('script');
-      s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + encodeURIComponent(amapCfg.key) +
-        '&plugin=AMap.DistrictSearch';
-      s.onerror = function () { showGuide('高德地图脚本加载失败，请检查网络或 Key 配置。'); };
+      s.src = 'https://api.tianditu.gov.cn/api?v=4.0&tk=' + encodeURIComponent(tdtCfg.key);
+      s.onerror = function () { showGuide('天地图脚本加载失败，请检查网络或 Key 配置。'); };
       s.onload = function () {
-        if (window.AMap && AMap.Map) {
-          try { initAMap(); }
+        if (window.T && T.Map) {
+          try { initTianditu(); }
           catch (e) { console.error(e); showGuide('地图初始化失败：' + e.message); }
         } else {
-          showGuide('高德地图未能初始化（Key 可能无效或配额不足）。');
+          showGuide('天地图未能初始化（Key 可能无效或配额不足）。');
         }
       };
       document.head.appendChild(s);
+      setTimeout(function () {
+        if (!map && !demo.active && guide.hidden) showGuide('地图加载超时。');
+      }, 12000);
     }
 
-    function initAMap() {
-      map = new AMap.Map('map', {
-        mapStyle: 'amap://styles/dark',
-        viewMode: '2D',
-        zoom: 4.6,
-        center: [112.8, 32.4],
-        zooms: [3, 16],
-        dragRotateEnable: false,
-        touchRotate: false
-      });
-      ['mapmove', 'zoomchange', 'rotate', 'resize', 'complete'].forEach(function (ev) {
-        map.on(ev, scheduleRedraw);
-      });
-      map.on('click', function (e) {
-        var ll = e.lnglat;
-        var lng = typeof ll.lng === 'number' ? ll.lng : ll.getLng();
-        var lat = typeof ll.lat === 'number' ? ll.lat : ll.getLat();
-        var c = hitByLngLat(lng, lat);
-        if (c) openCard(c); else closeCard();
+    function initTianditu() {
+      map = new T.Map('map');
+      mapDiv.classList.add('dark-tiles');
+      if (map.enableScrollWheelZoom) map.enableScrollWheelZoom();
+      fitTianditu();
+
+      ['move', 'zoom', 'resize', 'viewreset', 'zoomend', 'moveend', 'load'].forEach(function (ev) {
+        if (map.addEventListener) map.addEventListener(ev, onMapChange);
+        else if (map.on) map.on(ev, onMapChange);
       });
 
-      districtSearch = new AMap.DistrictSearch({ level: 'city', subdistrict: 0, extensions: 'all' });
+      // 交互：画布保持 pointer-events:none，事件挂在底图容器上，不阻挡拖拽/缩放
+      mapDiv.addEventListener('click', onSurfaceClick);
+      mapDiv.addEventListener('mousemove', onSurfaceMove);
+      mapDiv.addEventListener('mouseleave', hideTooltip);
 
-      CITIES.forEach(function (c) { addMarkers(c); });
-
-      var pending = CITIES.length, fitDone = false;
-      function maybeFit() {
-        if (fitDone) return;
-        fitDone = true;
-        var polys = [];
-        CITIES.forEach(function (c) { if (c._polys) c._polys.forEach(function (p) { polys.push(p); }); });
-        if (polys.length) { try { map.setFitView(polys, false, [60, 60, 60, 60]); } catch (e) {} }
-        scheduleRedraw();
-      }
-      setTimeout(maybeFit, 4500);
-
-      CITIES.forEach(function (c, i) {
-        setTimeout(function () {
-          loadBoundary(c, function (d) {
-            if (d) {
-              c._rings = d.boundaries;
-              var ctr = d.center;
-              if (ctr) {
-                c._center = [
-                  typeof ctr.lng === 'number' ? ctr.lng : ctr.getLng(),
-                  typeof ctr.lat === 'number' ? ctr.lat : ctr.getLat()
-                ];
-              }
-              if (mode === 'neon') buildPolys(c);
-            }
-            if (--pending === 0) maybeFit();
-            scheduleRedraw();
-          });
-        }, i * 150);
-      });
+      scheduleRedraw();
     }
 
-    function hitByLngLat(lng, lat) {
-      var p = cssXY(lng, lat);
-      if (!p) return null;
-      var best = null, bestD = 24;
+    function onMapChange() {
+      scheduleRedraw();
+      updateCardPosition();
+    }
+
+    function fitTianditu() {
+      var lats = [], lngs = [];
       CITIES.forEach(function (c) {
-        if (!hasCoords(c)) return;
-        var q = cssXY(c.lng, c.lat);
-        if (!q) return;
-        var d = Math.hypot(q.x - p.x, q.y - p.y);
-        if (d < bestD) { bestD = d; best = c; }
+        if (hasCoords(c)) { lngs.push(c.lng); lats.push(c.lat); }
       });
-      return best;
-    }
-
-    function loadBoundary(c, cb) {
-      var kw2 = (c.name || '') + '市';
-      var kw1 = (c.adcode !== undefined && c.adcode !== null && c.adcode !== '') ? String(c.adcode) : null;
-      (function go(kw) {
-        if (!kw || !districtSearch) return cb(null);
-        try {
-          districtSearch.search(kw, function (status, result) {
-            var d = (status === 'complete' && result && result.districtList &&
-              result.districtList[0]) || null;
-            if (d && d.boundaries && d.boundaries.length) return cb(d);
-            if (kw !== kw2) return go(kw2);
-            cb(null);
-          });
-        } catch (e) { cb(null); }
-      })(kw1 || kw2);
-    }
-
-    function buildPolys(c) {
-      if (!map || c._polys || !c._rings || !c._rings.length) return;
-      var halo = new AMap.Polygon({
-        path: c._rings, strokeColor: '#7df2e0', strokeWeight: 8, strokeOpacity: 0.14,
-        fillColor: '#2fd8c6', fillOpacity: 0.08, zIndex: 38, bubble: false, cursor: 'pointer'
-      });
-      var main = new AMap.Polygon({
-        path: c._rings, strokeColor: '#9df7ea', strokeWeight: 1.6, strokeOpacity: 0.85,
-        fillColor: '#25d9c9', fillOpacity: 0.34, zIndex: 40, bubble: false, cursor: 'pointer'
-      });
-      [halo, main].forEach(function (p) {
-        map.add(p);
-        p.on('click', function () { openCard(c); });
-        p.on('mouseover', function () {
-          main.setOptions({ fillOpacity: 0.5, strokeWeight: 2.4 });
-          showTooltip(c);
-        });
-        p.on('mouseout', function () {
-          main.setOptions({ fillOpacity: 0.34, strokeWeight: 1.6 });
-          hideTooltip();
-        });
-      });
-      c._polys = [halo, main];
-      if (mode !== 'neon') { halo.hide(); main.hide(); }
-    }
-
-    function addMarkers(c) {
-      if (!map || !hasCoords(c)) return;
-      var hot = document.createElement('div');
-      hot.className = 'city-hotspot';
-      hot.appendChild(document.createElement('i'));
-      hot.addEventListener('click', function (e) { e.stopPropagation(); openCard(c); });
-      hot.addEventListener('mouseenter', function () { showTooltip(c); });
-      hot.addEventListener('mouseleave', hideTooltip);
-      c._hotEl = hot;
-      map.add(new AMap.Marker({
-        position: [c.lng, c.lat], content: hot, anchor: 'center', zIndex: 120
-      }));
-
-      var lab = document.createElement('div');
-      lab.className = 'city-label'; lab.textContent = c.name;
-      c._label = new AMap.Marker({
-        position: [c.lng, c.lat], content: lab, anchor: 'bottom-center', zIndex: 110
-      });
-      map.add(c._label);
-      if (mode === 'fog') c._label.hide();
+      if (!lngs.length) {
+        map.centerAndZoom(new T.LngLat(105, 35), 4);
+        return;
+      }
+      var w = mapDiv.clientWidth, h = mapDiv.clientHeight;
+      var pad = Math.max(60, Math.min(w, h) * 0.12);
+      var minLng = Math.min.apply(null, lngs), maxLng = Math.max.apply(null, lngs);
+      var minLat = Math.min.apply(null, lats), maxLat = Math.max.apply(null, lats);
+      var spanLng = Math.max(maxLng - minLng, 1);
+      var spanMercY = Math.max(mercY(minLat) - mercY(maxLat), 0.002);
+      var z;
+      for (z = 12; z > 3; z--) {
+        var scale = 256 * Math.pow(2, z);
+        if (spanLng / 360 * scale <= w - 2 * pad && spanMercY * scale <= h - 2 * pad) break;
+      }
+      map.centerAndZoom(
+        new T.LngLat((minLng + maxLng) / 2, (minLat + maxLat) / 2),
+        Math.max(3, Math.min(12, z))
+      );
     }
 
     /* ================= 演示模式（无 Key 兜底，抽象点阵） ================= */
@@ -839,14 +750,9 @@
       demoFit();
       subtitle.textContent = '演示模式 · 抽象示意（配置 Key 后呈现真实地图）';
       creditEl.textContent = '演示模式 · 经纬网示意 · 无行政区划底图';
-      fx.addEventListener('click', function (e) {
-        var c = hitCity(e.clientX, e.clientY);
-        if (c) openCard(c); else closeCard();
-      });
+      fx.addEventListener('click', onSurfaceClick);
       fx.addEventListener('mousemove', function (e) {
-        var c = hitCity(e.clientX, e.clientY);
-        fx.style.cursor = c ? 'pointer' : 'default';
-        if (c) showTooltip(c); else hideTooltip();
+        fx.style.cursor = onSurfaceMove(e) ? 'pointer' : 'default';
       });
       fx.addEventListener('mouseleave', hideTooltip);
       scheduleRedraw();
@@ -878,7 +784,9 @@
       window.addEventListener('resize', function () {
         sizeFx();
         if (demo.active) demoFit();
+        if (map && map.checkResize) { try { map.checkResize(); } catch (e) {} }
         scheduleRedraw();
+        updateCardPosition();
       });
       document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') closeCard();
@@ -888,8 +796,14 @@
         initDemo();
       });
 
-      if (amapCfg.key && !/^(YOUR|这里|请)/.test(amapCfg.key)) {
-        loadAMap();
+      if (tdtCfg.key && !/^(YOUR|这里|请)/.test(tdtCfg.key)) {
+        // 天地图为 WGS84 坐标系，城市数据按 GCJ-02 维护，先统一转换
+        CITIES.forEach(function (c) {
+          if (!hasCoords(c)) return;
+          var w = gcj02ToWgs84(c.lng, c.lat);
+          c.lng = w[0]; c.lat = w[1];
+        });
+        loadTianditu();
       } else {
         showGuide('');
       }
