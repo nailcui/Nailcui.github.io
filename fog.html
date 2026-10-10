@@ -172,6 +172,7 @@
   </div>
 
   <script src="./fog-china.js"></script>
+  <script src="./fog-cities.js"></script>
   <script src="./fog-data.js"></script>
   <script>
   (function () {
@@ -272,16 +273,41 @@
       return { x: (lng - bbox.lng0) * LATK * BASEK, y: (bbox.lat1 - lat) * BASEK };
     }
 
+    function traceRing(path, ring) {
+      for (var i = 0; i < ring.length; i++) {
+        var b = proj(ring[i][0], ring[i][1]);
+        if (i === 0) path.moveTo(b.x, b.y); else path.lineTo(b.x, b.y);
+      }
+      path.closePath();
+    }
+
+    // 点亮城市的市域轮廓 Path2D（按 adcode 关联 fog-cities.js）
+    var CITY_SHAPES = window.FOG_CITY_SHAPES || {};
+    CITIES.forEach(function (c) {
+      var sh = CITY_SHAPES[String(c.adcode)];
+      if (!sh || !sh.polys) return;
+      var path = new Path2D();
+      sh.polys.forEach(function (poly) {
+        poly.forEach(function (ring) { traceRing(path, ring); });
+      });
+      c._shapePath = path;
+    });
+
     /* ================= 视图（平移 / 缩放） ================= */
     var view = { s: 1, tx: 0, ty: 0, minS: 0.2, maxS: 8 };
+    var viewDirty = false; // 用户手动缩放/平移过后，尺寸变化不再重置视野
 
-    function fitView() {
+    function computeZoomBounds() {
       var pad = Math.min(stage.clientWidth, stage.clientHeight) * 0.07 + 12;
       view.minS = Math.min(
         (stage.clientWidth - 2 * pad) / W,
         (stage.clientHeight - 2 * pad) / H
       );
       view.maxS = view.minS * 10;
+    }
+
+    function fitView() {
+      computeZoomBounds();
       view.s = view.minS;
       view.tx = (stage.clientWidth - W * view.s) / 2;
       view.ty = (stage.clientHeight - H * view.s) / 2;
@@ -302,6 +328,7 @@
       view.tx = cx - (cx - view.tx) * k;
       view.ty = cy - (cy - view.ty) * k;
       view.s = ns;
+      viewDirty = true;
       clampPan();
       scheduleRedraw();
     }
@@ -396,7 +423,7 @@
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, fx.width, fx.height);
 
-      // 世界坐标系：底图 + 经纬网
+      // 世界坐标系：底图 + 经纬网 + 点亮市域
       ctx.save();
       ctx.setTransform(view.s * dpr, 0, 0, view.s * dpr, view.tx * dpr, view.ty * dpr);
       drawGraticule();
@@ -410,6 +437,7 @@
         ctx.strokeStyle = 'rgba(110, 220, 205, 0.4)';
         ctx.stroke(jdPath);
       }
+      drawLitShapes();
       ctx.restore();
 
       // 光效（屏幕像素尺度，缩放下观感一致）
@@ -443,42 +471,45 @@
       ctx.shadowBlur = 0;
     }
 
-    function drawCityGlowDot(p) {
-      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 24 * dpr);
-      g.addColorStop(0, 'rgba(77, 240, 216, 0.4)');
-      g.addColorStop(1, 'rgba(77, 240, 216, 0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 24 * dpr, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#eafffb';
-      ctx.beginPath(); ctx.arc(p.x, p.y, 2.2 * dpr, 0, Math.PI * 2); ctx.fill();
+    // 点亮城市的市域高亮（霓虹/脉冲直接可见；迷雾模式下先绘制，被暗幕覆盖后随挖空透出）
+    function drawLitShapes() {
+      var fill, stroke;
+      if (mode === 'neon') { fill = 'rgba(41, 222, 205, 0.32)'; stroke = 'rgba(140, 247, 232, 0.7)'; }
+      else if (mode === 'fog') { fill = 'rgba(41, 222, 205, 0.2)'; stroke = 'rgba(140, 247, 232, 0.5)'; }
+      else { fill = 'rgba(41, 222, 205, 0.26)'; stroke = 'rgba(140, 247, 232, 0.6)'; }
+      ctx.fillStyle = fill;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1.1 / view.s;
+      CITIES.forEach(function (c) {
+        if (!c._shapePath) return;
+        ctx.fill(c._shapePath, 'evenodd');
+        ctx.stroke(c._shapePath);
+      });
     }
 
-    // —— 样式一：霓虹光圈 ——
+    // 城市中心点标记（克制的亮点）
+    function drawCityDot(p) {
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 9 * dpr);
+      g.addColorStop(0, 'rgba(224, 255, 248, 0.5)');
+      g.addColorStop(1, 'rgba(224, 255, 248, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 9 * dpr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f2fffc';
+      ctx.beginPath(); ctx.arc(p.x, p.y, 1.8 * dpr, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // —— 样式一：霓虹光圈（市域高亮 + 中心亮点 + 名称）——
     function drawNeon() {
       CITIES.forEach(function (c) {
         if (!hasCoords(c)) return;
         var p = canvasXY(c.lng, c.lat);
         if (!p) return;
-        var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26 * dpr);
-        g.addColorStop(0, 'rgba(37, 217, 201, 0.5)');
-        g.addColorStop(1, 'rgba(37, 217, 201, 0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 26 * dpr, 0, Math.PI * 2); ctx.fill();
-
-        ctx.strokeStyle = 'rgba(157, 247, 232, 0.85)';
-        ctx.lineWidth = 1.2 * dpr;
-        ctx.shadowColor = 'rgba(77, 240, 216, 0.9)';
-        ctx.shadowBlur = 8 * dpr;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 7 * dpr, 0, Math.PI * 2); ctx.stroke();
-
-        ctx.fillStyle = '#eafffb';
-        ctx.beginPath(); ctx.arc(p.x, p.y, 2.4 * dpr, 0, Math.PI * 2); ctx.fill();
-
-        drawNameLabel(c, { x: p.x, y: p.y + 2 * dpr });
+        drawCityDot(p);
+        drawNameLabel(c, { x: p.x, y: p.y - 2 * dpr });
       });
     }
 
-    // —— 样式二：迷雾探索 ——
+    // —— 样式二：迷雾探索（暗幕按市域轮廓挖空 + 发光边界）——
     function drawFog() {
       ctx.fillStyle = 'rgba(6, 10, 16, 0.93)';
       ctx.fillRect(0, 0, fx.width, fx.height);
@@ -489,7 +520,7 @@
         if (!hasCoords(c)) return;
         var p = canvasXY(c.lng, c.lat);
         if (!p) return;
-        var r = 72 * dpr;
+        var r = 36 * dpr;
         var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
         g.addColorStop(0, 'rgba(0,0,0,0.95)');
         g.addColorStop(0.7, 'rgba(0,0,0,0.5)');
@@ -497,18 +528,42 @@
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
       });
+      // 市域轮廓整体挖空（阴影羽化以设备像素计，边缘柔和）
+      ctx.setTransform(view.s * dpr, 0, 0, view.s * dpr, view.tx * dpr, view.ty * dpr);
+      ctx.shadowColor = '#000'; ctx.shadowBlur = 14 * dpr;
+      ctx.fillStyle = '#000';
+      CITIES.forEach(function (c) {
+        if (c._shapePath) ctx.fill(c._shapePath, 'evenodd');
+      });
+      ctx.lineWidth = 6 / view.s;
+      ctx.strokeStyle = '#000';
+      CITIES.forEach(function (c) {
+        if (c._shapePath) ctx.stroke(c._shapePath);
+      });
+      ctx.restore();
+
+      // 挖空边界的青色微光
+      ctx.save();
+      ctx.setTransform(view.s * dpr, 0, 0, view.s * dpr, view.tx * dpr, view.ty * dpr);
+      ctx.shadowColor = 'rgba(96, 245, 224, 0.9)';
+      ctx.shadowBlur = 8 * dpr;
+      ctx.strokeStyle = 'rgba(110, 246, 226, 0.4)';
+      ctx.lineWidth = 1.2 / view.s;
+      CITIES.forEach(function (c) {
+        if (c._shapePath) ctx.stroke(c._shapePath);
+      });
       ctx.restore();
 
       CITIES.forEach(function (c) {
         if (!hasCoords(c)) return;
         var p = canvasXY(c.lng, c.lat);
         if (!p) return;
-        drawCityGlowDot(p);
+        drawCityDot(p);
         drawNameLabel(c, p);
       });
     }
 
-    // —— 样式三：星火脉冲 ——
+    // —— 样式三：星火脉冲（市域高亮 + 中心光点扩散波纹）——
     function drawPulse(t) {
       var T = reduceMotion ? 1200 : t;
       CITIES.forEach(function (c) {
@@ -516,20 +571,13 @@
         var p = canvasXY(c.lng, c.lat);
         if (!p) return;
 
-        var halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 16 * dpr);
-        halo.addColorStop(0, 'rgba(77, 240, 216, 0.5)');
-        halo.addColorStop(1, 'rgba(77, 240, 216, 0)');
-        ctx.fillStyle = halo;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 16 * dpr, 0, Math.PI * 2); ctx.fill();
-
-        ctx.fillStyle = '#d9fff8';
-        ctx.beginPath(); ctx.arc(p.x, p.y, 2.6 * dpr, 0, Math.PI * 2); ctx.fill();
+        drawCityDot(p);
 
         for (var k = 0; k < 2; k++) {
           var ph = ((T / 3000) + k * 0.5) % 1;
-          var r = (6 + ph * 30) * dpr;
-          ctx.strokeStyle = 'rgba(90, 240, 220, ' + ((1 - ph) * 0.55).toFixed(3) + ')';
-          ctx.lineWidth = 1.6 * dpr;
+          var r = (5 + ph * 26) * dpr;
+          ctx.strokeStyle = 'rgba(90, 240, 220, ' + ((1 - ph) * 0.5).toFixed(3) + ')';
+          ctx.lineWidth = 1.4 * dpr;
           ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
         }
 
@@ -630,7 +678,21 @@
     function hitCity(clientX, clientY) {
       var rect = stage.getBoundingClientRect();
       var x = clientX - rect.left, y = clientY - rect.top;
-      var best = null, bestD = 20;
+      // 市域轮廓优先：屏幕点 → 基准坐标 → 点在多边形内测试
+      var bx = (x - view.tx) / view.s, by = (y - view.ty) / view.s;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      var best = null;
+      for (var i = 0; i < CITIES.length; i++) {
+        if (CITIES[i]._shapePath && ctx.isPointInPath(CITIES[i]._shapePath, bx, by, 'evenodd')) {
+          best = CITIES[i];
+          break;
+        }
+      }
+      ctx.restore();
+      if (best) return best;
+      // 回退：中心亮点距离（轮廓过小或缺失时）
+      var bestD = 20;
       CITIES.forEach(function (c) {
         if (!hasCoords(c)) return;
         var p = cssXY(c.lng, c.lat);
@@ -685,6 +747,7 @@
         view.s = ns;
         view.tx = b.cx - (pinchState.cx - pinchState.tx) * k;
         view.ty = b.cy - (pinchState.cy - pinchState.ty) * k;
+        viewDirty = true;
         clampPan();
         closeCard();
         scheduleRedraw();
@@ -696,6 +759,7 @@
         if (panState.moved) {
           view.tx = panState.tx0 + p.x - panState.sx;
           view.ty = panState.ty0 + p.y - panState.sy;
+          viewDirty = true;
           clampPan();
           closeCard();
           scheduleRedraw();
@@ -733,6 +797,11 @@
       zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0016));
     }, { passive: false });
 
+    fx.addEventListener('dblclick', function (e) {
+      var p = localXY(e);
+      zoomAt(p.x, p.y, 1.9);
+    });
+
     fx.addEventListener('mouseleave', hideTooltip);
 
     /* ================= 启动 ================= */
@@ -746,8 +815,15 @@
 
       window.addEventListener('resize', function () {
         sizeFx();
-        fitView();
+        if (viewDirty) {
+          computeZoomBounds();
+          view.s = Math.min(Math.max(view.s, view.minS), view.maxS);
+          clampPan();
+        } else {
+          fitView();
+        }
         scheduleRedraw();
+        updateCardPosition();
       });
       document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') closeCard();
