@@ -661,11 +661,12 @@
           cs.forEach(function (q, i) {
             if (q.x < -60 || q.x > fx.width + 60 || q.y < -60 || q.y > fx.height + 60) return;
             drawTrailNode(q, r, i === 0 || i === cs.length - 1);
-            // 标签避让：与所有已放置标签保持横向间距（路线可能折返，取绝对值）
-            var ok = labelXs.every(function (x) { return Math.abs(q.x - x) >= 50 * dpr; });
-            if (pts[i].name && ok) {
-              drawTrailLabel(pts[i].name, q, r);
-              labelXs.push(q.x);
+            // 标签避让：按文字宽度 + 纵向间距判断重叠（路线可能折返，横向取绝对值）；
+            // 经度接近但南北错开的节点（如杭州与湖州）互不遮挡
+            var text = pts[i].name;
+            if (text && fitsLabel(labelXs, q, text)) {
+              drawTrailLabel(text, q, r);
+              labelXs.push({ x: q.x, y: q.y, w: text.length * 10.5 * dpr });
             }
           });
         });
@@ -695,6 +696,16 @@
       ctx.textAlign = 'center';
       ctx.fillText(text, p.x, p.y - 14 * dpr);
       ctx.shadowBlur = 0;
+    }
+
+    // 标签是否放得下：与已放置标签横向留出两侧半宽 + 6px 间距，
+    // 或纵向错开 14px 以上（标签画在节点上方 14px 处）
+    function fitsLabel(placed, q, text) {
+      var w = text.length * 10.5 * dpr;
+      return placed.every(function (l) {
+        return Math.abs(q.x - l.x) >= (w + l.w) / 2 + 6 * dpr ||
+               Math.abs(q.y - l.y) >= 14 * dpr;
+      });
     }
 
     // 命中行迹核心节点（悬停/点按提示用），半径略小于城市命中
