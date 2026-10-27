@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="小游戏箱 —— 纯手写小游戏，键盘与触屏均可玩，最高分存本机。">
+  <title>小游戏 · Nailcui</title>
+  <link rel="stylesheet" href="./games.css">
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="back" href="../index.html">‹ 返回</a>
+      <div class="brand">
+        <h1>小游戏</h1>
+        <p>纯手写小游戏 · 键盘触屏皆可玩</p>
+      </div>
+    </header>
+
+    <main class="cards">
+      <a class="card" href="./2048.html">
+        <span class="card-ico sm">2048</span>
+        <span class="card-body">
+          <h2>2048</h2>
+          <p>滑动合成相同数字，冲击 2048：单步撤销、方向键 / WASD / 触屏滑动。</p>
+          <span class="card-best" id="best-2048"></span>
+          <span class="card-tags"><span>合成</span><span>滑动</span><span>撤销</span></span>
+        </span>
+        <span class="card-go">→</span>
+      </a>
+
+      <a class="card" href="./snake.html">
+        <span class="card-ico">🐍</span>
+        <span class="card-body">
+          <h2>贪吃蛇</h2>
+          <p>经典街机：吃食物变长加速，撞墙或咬到自己就结束。支持触屏方向键。</p>
+          <span class="card-best" id="best-snake"></span>
+          <span class="card-tags"><span>街机</span><span>加速</span><span>暂停</span></span>
+        </span>
+        <span class="card-go">→</span>
+      </a>
+
+      <a class="card" href="./memory.html">
+        <span class="card-ico">🧠</span>
+        <span class="card-body">
+          <h2>记忆翻牌</h2>
+          <p>8 对迷雾主题卡牌两两配对：计时计步，挑战最少步数纪录。</p>
+          <span class="card-best" id="best-memory"></span>
+          <span class="card-tags"><span>记忆</span><span>翻牌</span><span>计时</span></span>
+        </span>
+        <span class="card-go">→</span>
+      </a>
+
+      <div class="card ghost">更多游戏 · 敬请期待</div>
+    </main>
+
+    <footer class="credit">纯静态实现 · 零外部请求 · 最高分保存在本机浏览器</footer>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+    function get(k) {
+      try { return parseInt(localStorage.getItem(k), 10) || 0; } catch (e) { return 0; }
+    }
+    var b2048 = get('games:2048:best');
+    var bSnake = get('games:snake:best');
+    var bMem = get('games:memory:best');
+    if (b2048 > 0) {
+      document.getElementById('best-2048').textContent = '★ 本机最高 ' + b2048 + ' 分';
+      document.getElementById('best-2048').classList.add('show');
+    }
+    if (bSnake > 0) {
+      document.getElementById('best-snake').textContent = '★ 本机最高 ' + bSnake + ' 分';
+      document.getElementById('best-snake').classList.add('show');
+    }
+    if (bMem > 0) {
+      document.getElementById('best-memory').textContent = '★ 本机最佳 ' + bMem + ' 步';
+      document.getElementById('best-memory').classList.add('show');
+    }
+  })();
+  </script>
+</body>
+</html>

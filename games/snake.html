@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="贪吃蛇 —— 经典街机小游戏，吃食物变长加速，方向键 / WASD / 触屏均可操控。">
+  <title>贪吃蛇 · 小游戏 · Nailcui</title>
+  <link rel="stylesheet" href="./games.css">
+  <style>
+    .stage {
+      width: min(460px, 92vw, 68vh);
+      border-radius: 16px;
+      border: 1px solid var(--hair);
+      background: rgba(255, 255, 255, 0.03);
+      overflow: hidden;
+    }
+    .stage canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="back" href="./index.html">‹ 游戏箱</a>
+      <div class="brand">
+        <h1>贪吃蛇</h1>
+        <p>吃食物变长 · 莫咬到自己</p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="pauseBtn" type="button" disabled>暂停</button>
+        <button class="btn primary" id="restartBtn" type="button">重新开始</button>
+      </div>
+    </header>
+
+    <div class="hud">
+      <span class="chip"><label>得分</label><b id="score">0</b></span>
+      <span class="chip hi"><label>最佳</label><b id="best">0</b></span>
+      <span class="chip"><label>长度</label><b id="len">3</b></span>
+    </div>
+
+    <main class="stage-wrap">
+      <div class="stage" id="stage">
+        <canvas id="cv"></canvas>
+        <div class="overlay pe-none" id="overlay">
+          <h2 id="ovTitle">贪吃蛇</h2>
+          <p id="ovText">按方向键 / 滑动画面开始</p>
+          <div class="ov-btns">
+            <button class="btn primary" id="ovBtn" type="button">开始</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div class="dpad" id="dpad" aria-label="方向按钮">
+      <button type="button" class="u" data-d="up" aria-label="上">↑</button>
+      <button type="button" class="l" data-d="left" aria-label="左">←</button>
+      <button type="button" class="d" data-d="down" aria-label="下">↓</button>
+      <button type="button" class="r" data-d="right" aria-label="右">→</button>
+    </div>
+
+    <p class="ctl-hint">方向键 / WASD 移动 · 空格暂停 · 触屏滑动或用方向按钮</p>
+    <footer class="credit">纯手写 Canvas · 零外部请求 · 最高分保存在本机浏览器</footer>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var N = 21;
+    var BASE_SPEED = 150, MIN_SPEED = 75;
+
+    var cv = document.getElementById('cv');
+    var ctx = cv.getContext('2d');
+    var stage = document.getElementById('stage');
+    var overlay = document.getElementById('overlay');
+    var ovTitle = document.getElementById('ovTitle');
+    var ovText = document.getElementById('ovText');
+    var ovBtn = document.getElementById('ovBtn');
+    var pauseBtn = document.getElementById('pauseBtn');
+    var restartBtn = document.getElementById('restartBtn');
+    var scoreEl = document.getElementById('score');
+    var bestEl = document.getElementById('best');
+    var lenEl = document.getElementById('len');
+
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var size = 0, cell = 0;
+    var snake, dir, queue, food, score = 0, speed = BASE_SPEED;
+    var state = 'ready'; // ready | run | pause | over
+    var best = 0;
+    try { best = parseInt(localStorage.getItem('games:snake:best'), 10) || 0; } catch (e) {}
+    bestEl.textContent = best;
+
+    /* ---------- 尺寸 ---------- */
+    function resize() {
+      var w = stage.clientWidth;
+      if (!w) return;
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      cv.width = Math.round(w * dpr);
+      cv.height = Math.round(w * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      size = w;
+      cell = w / N;
+      draw(performance.now());
+    }
+    window.addEventListener('resize', resize);
+
+    /* ---------- 游戏状态 ---------- */
+    function emptyCell() {
+      while (true) {
+        var p = { x: Math.floor(Math.random() * N), y: Math.floor(Math.random() * N) };
+        var hit = snake.some(function (s) { return s.x === p.x && s.y === p.y; });
+        if (!hit) return p;
+      }
+    }
+    function reset() {
+      clearStepTimer();
+      snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+      dir = { x: 1, y: 0 };
+      queue = [];
+      score = 0;
+      speed = BASE_SPEED;
+      food = emptyCell();
+      scoreEl.textContent = '0';
+      lenEl.textContent = snake.length;
+      state = 'ready';
+      pauseBtn.disabled = true;
+      pauseBtn.textContent = '暂停';
+      ovTitle.textContent = '贪吃蛇';
+      ovText.textContent = '按方向键 / 滑动画面开始';
+      ovBtn.textContent = '开始';
+      overlay.classList.add('show');
+      overlay.classList.add('pe-none');
+      draw(performance.now());
+    }
+    function startRun() {
+      state = 'run';
+      overlay.classList.remove('show');
+      pauseBtn.disabled = false;
+      scheduleStep();
+    }
+    function pauseGame() {
+      if (state !== 'run') return;
+      state = 'pause';
+      clearStepTimer();
+      pauseBtn.textContent = '继续';
+      ovTitle.textContent = '已暂停';
+      ovText.textContent = '按空格或点按继续';
+      ovBtn.textContent = '继续';
+      overlay.classList.remove('pe-none');
+      overlay.classList.add('show');
+    }
+    function resumeGame() {
+      if (state !== 'pause') return;
+      state = 'run';
+      pauseBtn.textContent = '暂停';
+      overlay.classList.remove('show');
+      scheduleStep();
+    }
+    function die() {
+      state = 'over';
+      pauseBtn.disabled = true;
+      var isRecord = score > best && score > 0;
+      if (score > best) {
+        best = score;
+        bestEl.textContent = best;
+        try { localStorage.setItem('games:snake:best', String(best)); } catch (e) {}
+      }
+      ovTitle.textContent = '游戏结束';
+      ovText.textContent = '得分 ' + score + ' · 长度 ' + snake.length +
+        (isRecord ? ' · 🎉 新纪录！' : ' · 最佳 ' + best);
+      ovBtn.textContent = '再来一局';
+      overlay.classList.remove('pe-none');
+      overlay.classList.add('show');
+    }
+
+    function step() {
+      if (queue.length) dir = queue.shift();
+      var h = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+      if (h.x < 0 || h.y < 0 || h.x >= N || h.y >= N) return die();
+      var eating = food && h.x === food.x && h.y === food.y;
+      if (!eating) snake.pop();
+      for (var i = 0; i < snake.length; i++) {
+        if (snake[i].x === h.x && snake[i].y === h.y) {
+          return die();
+        }
+      }
+      snake.unshift(h);
+      if (eating) {
+        score += 10;
+        scoreEl.textContent = score;
+        speed = Math.max(MIN_SPEED, speed - 3);
+        lenEl.textContent = snake.length;
+        food = emptyCell();
+      }
+    }
+
+    /* ---------- 绘制 ---------- */
+    function rr(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+    function draw(t) {
+      if (!size || !snake) return;
+      ctx.clearRect(0, 0, size, size);
+
+      // 淡格底
+      ctx.fillStyle = 'rgba(255,255,255,0.022)';
+      for (var y = 0; y < N; y++) {
+        for (var x = 0; x < N; x++) {
+          if ((x + y) % 2 === 0) ctx.fillRect(x * cell, y * cell, cell, cell);
+        }
+      }
+
+      // 食物（呼吸光点）
+      if (food) {
+        var pulse = reduced ? 1 : 1 + 0.14 * Math.sin(t / 200);
+        var fr = cell * 0.32 * pulse;
+        var fx = (food.x + 0.5) * cell, fy = (food.y + 0.5) * cell;
+        ctx.shadowColor = 'rgba(239,125,104,0.85)';
+        ctx.shadowBlur = cell * 0.9;
+        ctx.fillStyle = '#ef7d68';
+        ctx.beginPath();
+        ctx.arc(fx, fy, fr, 0, 7);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      // 蛇身（尾→头，渐隐）
+      var n = snake.length;
+      for (var i = n - 1; i >= 1; i--) {
+        var s = snake[i];
+        var a = 0.92 - (i / n) * 0.62;
+        ctx.fillStyle = 'rgba(77,240,216,' + a.toFixed(3) + ')';
+        rr(s.x * cell + cell * 0.08, s.y * cell + cell * 0.08,
+           cell * 0.84, cell * 0.84, cell * 0.28);
+        ctx.fill();
+      }
+      // 蛇头
+      var hd = snake[0];
+      var hx = hd.x * cell, hy = hd.y * cell;
+      ctx.fillStyle = '#8cf7e8';
+      ctx.shadowColor = 'rgba(140,247,232,0.6)';
+      ctx.shadowBlur = cell * 0.5;
+      rr(hx + cell * 0.05, hy + cell * 0.05, cell * 0.9, cell * 0.9, cell * 0.3);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // 眼睛
+      var cx = hx + cell / 2, cy = hy + cell / 2;
+      var px = -dir.y, py = dir.x; // 垂直于行进方向
+      var fw = cell * 0.22;        // 沿行进方向前移
+      ctx.fillStyle = '#062018';
+      ctx.beginPath();
+      ctx.arc(cx + dir.x * fw + px * cell * 0.18,
+              cy + dir.y * fw + py * cell * 0.18, cell * 0.07, 0, 7);
+      ctx.arc(cx + dir.x * fw - px * cell * 0.18,
+              cy + dir.y * fw - py * cell * 0.18, cell * 0.07, 0, 7);
+      ctx.fill();
+    }
+
+    /* ---------- 主循环：setTimeout 驱动步进（rAF 挂起的环境也能玩），每步必重绘 ---------- */
+    var stepTimer = null;
+    function clearStepTimer() {
+      if (stepTimer) { clearTimeout(stepTimer); stepTimer = null; }
+    }
+    function scheduleStep() {
+      clearStepTimer();
+      stepTimer = setTimeout(function () {
+        stepTimer = null;
+        if (state !== 'run') return;
+        step();
+        draw(performance.now());
+        if (state === 'run') scheduleStep();
+      }, speed);
+    }
+
+    /* ---------- 输入 ---------- */
+    var DIRS = {
+      up: { x: 0, y: -1 }, down: { x: 0, y: 1 },
+      left: { x: -1, y: 0 }, right: { x: 1, y: 0 }
+    };
+    function setDir(name) {
+      var d = DIRS[name];
+      if (!d) return;
+      if (state === 'ready') {
+        dir = d;
+        startRun();
+        return;
+      }
+      if (state === 'over') return;
+      if (state === 'pause') resumeGame();
+      var last = queue.length ? queue[queue.length - 1] : dir;
+      if (d.x === -last.x && d.y === -last.y) return; // 禁止 180° 掉头
+      if (d.x === last.x && d.y === last.y) return;
+      if (queue.length < 3) queue.push(d);
+    }
+
+    var KEYS = {
+      ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+      w: 'up', s: 'down', a: 'left', d: 'right',
+      W: 'up', S: 'down', A: 'left', D: 'right'
+    };
+    window.addEventListener('keydown', function (e) {
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        if (state === 'run') pauseGame();
+        else if (state === 'pause') resumeGame();
+        else if (state === 'over') reset();
+        return;
+      }
+      if (e.key === 'Enter' && state === 'over') { reset(); return; }
+      var d = KEYS[e.key];
+      if (!d) return;
+      e.preventDefault();
+      setDir(d);
+    });
+
+    // 滑动
+    var sx = 0, sy = 0, tracking = false;
+    stage.addEventListener('pointerdown', function (e) {
+      tracking = true;
+      sx = e.clientX; sy = e.clientY;
+    });
+    window.addEventListener('pointerup', function (e) {
+      if (!tracking) return;
+      tracking = false;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      var ax = Math.abs(dx), ay = Math.abs(dy);
+      if (Math.max(ax, ay) < 20) return;
+      setDir(ax > ay ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+    });
+
+    // 触屏方向键
+    document.getElementById('dpad').addEventListener('pointerdown', function (e) {
+      var b = e.target.closest('button[data-d]');
+      if (!b) return;
+      e.preventDefault();
+      setDir(b.getAttribute('data-d'));
+    });
+
+    pauseBtn.addEventListener('click', function () {
+      if (state === 'run') pauseGame();
+      else if (state === 'pause') resumeGame();
+    });
+    restartBtn.addEventListener('click', reset);
+    ovBtn.addEventListener('click', function () {
+      if (state === 'ready') startRun();
+      else if (state === 'pause') resumeGame();
+      else if (state === 'over') { reset(); startRun(); }
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden && state === 'run') pauseGame();
+    });
+
+    reset();
+    resize();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="记忆翻牌 —— 8 对迷雾主题卡牌两两配对，计时计步，挑战最少步数。">
+  <title>记忆翻牌 · 小游戏 · Nailcui</title>
+  <link rel="stylesheet" href="./games.css">
+  <style>
+    .mgrid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      width: min(430px, 92vw);
+      margin: 0 auto;
+    }
+    .mcard {
+      appearance: none;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      aspect-ratio: 1 / 1;
+      perspective: 700px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .mc-in {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transform-style: preserve-3d;
+      transition: transform 0.45s cubic-bezier(0.3, 0.8, 0.3, 1);
+    }
+    .mcard.open .mc-in { transform: rotateY(180deg); }
+    .mc-face {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      border: 1px solid var(--hair);
+    }
+    .mc-front {
+      background:
+        radial-gradient(120% 120% at 30% 20%, rgba(77, 240, 216, 0.08) 0%, rgba(0, 0, 0, 0) 55%),
+        var(--glass);
+      color: rgba(140, 247, 232, 0.5);
+      font-size: clamp(18px, 5vw, 26px);
+    }
+    .mc-back {
+      transform: rotateY(180deg);
+      background: var(--panel-2);
+      font-size: clamp(30px, 9vw, 44px);
+      line-height: 1;
+    }
+    .mcard.done { cursor: default; }
+    .mcard.done .mc-back {
+      border-color: var(--line);
+      background: rgba(77, 240, 216, 0.1);
+      box-shadow: 0 0 16px rgba(77, 240, 216, 0.18);
+    }
+    .mcard.done .mc-front { opacity: 0; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="back" href="./index.html">‹ 游戏箱</a>
+      <div class="brand">
+        <h1>记忆翻牌</h1>
+        <p>两两配对 · 挑战最少步数</p>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="newBtn" type="button">重新开始</button>
+      </div>
+    </header>
+
+    <div class="hud">
+      <span class="chip"><label>步数</label><b id="moves">0</b></span>
+      <span class="chip"><label>用时</label><b id="time">0:00</b></span>
+      <span class="chip hi"><label>最佳</label><b id="best">—</b></span>
+    </div>
+
+    <main class="stage-wrap">
+      <div class="stage" id="stage">
+        <div class="mgrid" id="grid"></div>
+        <div class="overlay" id="overlay">
+          <h2 id="ovTitle">🎉 全部配对成功！</h2>
+          <p id="ovText"></p>
+          <span class="tag" id="ovTag" hidden>新纪录</span>
+          <div class="ov-btns">
+            <button class="btn primary" id="ovBtn" type="button">再来一局</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <p class="ctl-hint">点按卡牌翻开 · 记住位置凑齐 8 对 · 用时与步数越少越强</p>
+    <footer class="credit">纯 CSS 3D 翻牌 · 零外部请求 · 最佳纪录保存在本机浏览器</footer>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var EMOJI = ['🌫️', '🧭', '🏯', '⛰️', '🌊', '🚄', '🏮', '☁️'];
+    var PAIRS = EMOJI.length;
+
+    var gridEl = document.getElementById('grid');
+    var overlay = document.getElementById('overlay');
+    var ovText = document.getElementById('ovText');
+    var ovTag = document.getElementById('ovTag');
+    var ovBtn = document.getElementById('ovBtn');
+    var newBtn = document.getElementById('newBtn');
+    var movesEl = document.getElementById('moves');
+    var timeEl = document.getElementById('time');
+    var bestEl = document.getElementById('best');
+
+    var first = null, lock = false, matched = 0, moves = 0;
+    var startAt = 0, timerId = null, playing = false;
+    var best = 0;
+    try { best = parseInt(localStorage.getItem('games:memory:best'), 10) || 0; } catch (e) {}
+    if (best > 0) bestEl.textContent = best + ' 步';
+
+    function shuffle(arr) {
+      for (var i = arr.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+      }
+      return arr;
+    }
+    function fmt(sec) {
+      var m = Math.floor(sec / 60), s = sec % 60;
+      return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+    function elapsed() {
+      return Math.floor((Date.now() - startAt) / 1000);
+    }
+    function startTimer() {
+      if (playing) return;
+      playing = true;
+      startAt = Date.now();
+      timerId = setInterval(function () { timeEl.textContent = fmt(elapsed()); }, 250);
+    }
+    function stopTimer() {
+      playing = false;
+      if (timerId) { clearInterval(timerId); timerId = null; }
+    }
+
+    function build() {
+      stopTimer();
+      first = null; lock = false; matched = 0; moves = 0;
+      movesEl.textContent = '0';
+      timeEl.textContent = '0:00';
+      overlay.classList.remove('show');
+
+      var deck = shuffle(EMOJI.concat(EMOJI));
+      gridEl.innerHTML = '';
+      deck.forEach(function (v) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mcard';
+        b.setAttribute('data-v', v);
+        b.setAttribute('aria-label', '卡牌');
+        b.innerHTML =
+          '<span class="mc-in">' +
+            '<span class="mc-face mc-front">✦</span>' +
+            '<span class="mc-face mc-back">' + v + '</span>' +
+          '</span>';
+        b.addEventListener('click', function () { flip(b); });
+        gridEl.appendChild(b);
+      });
+    }
+
+    function flip(card) {
+      if (lock) return;
+      if (card === first) return;
+      if (card.classList.contains('open') || card.classList.contains('done')) return;
+      startTimer();
+      card.classList.add('open');
+
+      if (!first) { first = card; return; }
+
+      moves++;
+      movesEl.textContent = moves;
+      var a = first, b = card;
+      first = null;
+
+      if (a.getAttribute('data-v') === b.getAttribute('data-v')) {
+        a.classList.add('done');
+        b.classList.add('done');
+        matched++;
+        if (matched === PAIRS) win();
+      } else {
+        lock = true;
+        setTimeout(function () {
+          a.classList.remove('open');
+          b.classList.remove('open');
+          lock = false;
+        }, 750);
+      }
+    }
+
+    function win() {
+      stopTimer();
+      var sec = elapsed();
+      var isRecord = best === 0 || moves < best;
+      if (isRecord) {
+        best = moves;
+        bestEl.textContent = best + ' 步';
+        try { localStorage.setItem('games:memory:best', String(best)); } catch (e) {}
+      }
+      ovTag.hidden = !isRecord;
+      ovText.textContent = '用 ' + moves + ' 步 · ' + fmt(sec) +
+        (isRecord ? ' · 刷新最少步数纪录' : ' · 最少步数纪录 ' + best + ' 步');
+      overlay.classList.add('show');
+    }
+
+    newBtn.addEventListener('click', build);
+    ovBtn.addEventListener('click', build);
+
+    build();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="2048 —— 滑动合成相同数字，方向键 / WASD / 触屏滑动，支持单步撤销。">
+  <title>2048 · 小游戏 · Nailcui</title>
+  <link rel="stylesheet" href="./games.css">
+  <style>
+    body { overflow-x: hidden; }
+
+    .board {
+      position: relative;
+      width: min(460px, 92vw, 68vh);
+      aspect-ratio: 1 / 1;
+      padding: 3px;
+      border-radius: 16px;
+      border: 1px solid var(--hair);
+      background: rgba(255, 255, 255, 0.035);
+    }
+    .cell {
+      position: absolute;
+      width: 25%;
+      height: 25%;
+      padding: 3px;
+    }
+    .cell i {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.045);
+    }
+    .tile {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 25%;
+      height: 25%;
+      padding: 3px;
+      transition: transform 0.12s ease;
+      will-change: transform;
+    }
+    .tile-in {
+      width: 100%;
+      height: 100%;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .len1, .len2 { font-size: clamp(26px, 8.6vw, 40px); }
+    .len3 { font-size: clamp(21px, 7vw, 33px); }
+    .len4 { font-size: clamp(16px, 5.4vw, 26px); }
+    .len5 { font-size: clamp(13px, 4.4vw, 21px); }
+
+    .v2    { background: rgba(255, 255, 255, 0.1);  color: var(--ink); }
+    .v4    { background: rgba(255, 255, 255, 0.17); color: var(--ink); }
+    .v8    { background: #2c6e66; color: #eafffb; }
+    .v16   { background: #2f8f7c; color: #eafffb; }
+    .v32   { background: #37b089; color: #052721; }
+    .v64   { background: #4df0d8; color: #052721; box-shadow: 0 0 16px rgba(77, 240, 216, 0.35); }
+    .v128  { background: #e8b04b; color: #241a05; }
+    .v256  { background: #ef9a4d; color: #241205; box-shadow: 0 0 14px rgba(232, 176, 75, 0.3); }
+    .v512  { background: #ef7d68; color: #2a0d08; box-shadow: 0 0 16px rgba(239, 125, 104, 0.35); }
+    .v1024 { background: #f25d8e; color: #fff0f5; box-shadow: 0 0 18px rgba(242, 93, 142, 0.4); }
+    .v2048 {
+      background: linear-gradient(135deg, #e8b04b, #f25d8e);
+      color: #fff;
+      box-shadow: 0 0 22px rgba(232, 176, 75, 0.55);
+    }
+    .vbig {
+      background: linear-gradient(135deg, #7c5cff, #4df0d8);
+      color: #fff;
+      box-shadow: 0 0 22px rgba(124, 92, 255, 0.5);
+    }
+
+    @keyframes spawnPop {
+      0%   { transform: scale(0.5); opacity: 0.4; }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    @keyframes bumpPop {
+      0%   { transform: scale(1.18); }
+      100% { transform: scale(1); }
+    }
+    .spawn { animation: spawnPop 0.18s ease both; }
+    .bump  { animation: bumpPop 0.18s ease both; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tile { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="back" href="./index.html">‹ 游戏箱</a>
+      <div class="brand">
+        <h1>2048</h1>
+        <p>滑动合成 · 冲击 2048</p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="undoBtn" type="button" disabled>撤销</button>
+        <button class="btn primary" id="newBtn" type="button">新游戏</button>
+      </div>
+    </header>
+
+    <div class="hud">
+      <span class="chip"><label>得分</label><b id="score">0</b></span>
+      <span class="chip hi"><label>最佳</label><b id="best">0</b></span>
+    </div>
+
+    <main class="stage-wrap">
+      <div class="stage" id="stage">
+        <div class="board" id="board">
+          <div class="tiles" id="tiles"></div>
+          <div class="overlay" id="overlay">
+            <h2 id="ovTitle"></h2>
+            <p id="ovText"></p>
+            <div class="ov-btns">
+              <button class="btn" id="ovAlt" type="button" hidden></button>
+              <button class="btn primary" id="ovMain" type="button">重新开始</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <p class="ctl-hint">方向键 / WASD 滑动 · Z 撤销 · 触屏滑动棋盘</p>
+    <footer class="credit">纯手写 DOM 动画 · 零外部请求 · 最高分保存在本机浏览器</footer>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var board = document.getElementById('board');
+    var tilesEl = document.getElementById('tiles');
+    var scoreEl = document.getElementById('score');
+    var bestEl = document.getElementById('best');
+    var overlay = document.getElementById('overlay');
+    var ovTitle = document.getElementById('ovTitle');
+    var ovText = document.getElementById('ovText');
+    var ovMain = document.getElementById('ovMain');
+    var ovAlt = document.getElementById('ovAlt');
+    var undoBtn = document.getElementById('undoBtn');
+    var newBtn = document.getElementById('newBtn');
+
+    var grid, score = 0, best = 0, won = false, over = false, busy = false;
+    var undoStack = [];
+    var gen = 0; // 新游戏/撤销会打断进行中的动画，用代数让旧定时器失效
+    var pendingDir = null; // 动画期间按下的最后一个方向，动画结束后补走
+
+    try { best = parseInt(localStorage.getItem('games:2048:best'), 10) || 0; } catch (e) {}
+    bestEl.textContent = best;
+
+    /* ---------- 棋盘底格 ---------- */
+    (function buildCells() {
+      for (var r = 0; r < 4; r++) {
+        for (var c = 0; c < 4; c++) {
+          var d = document.createElement('div');
+          d.className = 'cell';
+          d.style.transform = 'translate(' + c * 100 + '%,' + r * 100 + '%)';
+          d.appendChild(document.createElement('i'));
+          board.insertBefore(d, tilesEl);
+        }
+      }
+    })();
+
+    /* ---------- 瓷砖 ---------- */
+    function setPos(o) {
+      o.el.style.transform = 'translate(' + o.c * 100 + '%,' + o.r * 100 + '%)';
+    }
+    function paint(o) {
+      var v = o.val;
+      var len = String(v).length;
+      o.inEl.textContent = v;
+      o.inEl.className = 'tile-in len' + (len > 5 ? 5 : len) + ' v' + (v <= 2048 ? v : 'big');
+    }
+    function makeTile(r, c, val) {
+      var el = document.createElement('div');
+      el.className = 'tile';
+      var inn = document.createElement('div');
+      inn.className = 'tile-in';
+      el.appendChild(inn);
+      var o = { r: r, c: c, val: val, el: el, inEl: inn };
+      paint(o);
+      setPos(o); // 插入 DOM 前定位，避免从原点滑入
+      tilesEl.appendChild(el);
+      return o;
+    }
+    function spawnTile(animated) {
+      var empties = [];
+      for (var r = 0; r < 4; r++) {
+        for (var c = 0; c < 4; c++) {
+          if (!grid[r][c]) empties.push([r, c]);
+        }
+      }
+      if (!empties.length) return;
+      var p = empties[Math.floor(Math.random() * empties.length)];
+      var o = makeTile(p[0], p[1], Math.random() < 0.9 ? 2 : 4);
+      if (animated) o.inEl.classList.add('spawn');
+      grid[p[0]][p[1]] = o;
+    }
+    function emptyGrid() {
+      return [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+    }
+    function snapshotValues() {
+      return grid.map(function (row) {
+        return row.map(function (t) { return t ? t.val : 0; });
+      });
+    }
+    function rebuild(vals) {
+      tilesEl.innerHTML = '';
+      grid = emptyGrid();
+      for (var r = 0; r < 4; r++) {
+        for (var c = 0; c < 4; c++) {
+          if (vals[r][c]) grid[r][c] = makeTile(r, c, vals[r][c]);
+        }
+      }
+    }
+
+    /* ---------- 遮罩 ---------- */
+    function showOverlay(title, text, mainLabel, altLabel, altHandler) {
+      ovTitle.textContent = title;
+      ovText.textContent = text;
+      ovMain.textContent = mainLabel;
+      if (altLabel) {
+        ovAlt.hidden = false;
+        ovAlt.textContent = altLabel;
+        ovAlt.onclick = altHandler;
+      } else {
+        ovAlt.hidden = true;
+        ovAlt.onclick = null;
+      }
+      overlay.classList.add('show');
+    }
+    function hideOverlay() { overlay.classList.remove('show'); }
+
+    /* ---------- 终局判定 ---------- */
+    function movesAvailable() {
+      for (var r = 0; r < 4; r++) {
+        for (var c = 0; c < 4; c++) {
+          var t = grid[r][c];
+          if (!t) return true;
+          if (c < 3 && grid[r][c + 1] && grid[r][c + 1].val === t.val) return true;
+          if (r < 3 && grid[r + 1][c] && grid[r + 1][c].val === t.val) return true;
+        }
+      }
+      return false;
+    }
+    function checkEnd() {
+      if (!won) {
+        for (var r = 0; r < 4; r++) {
+          for (var c = 0; c < 4; c++) {
+            if (grid[r][c] && grid[r][c].val >= 2048) {
+              won = true;
+              showOverlay('🎉 达成 2048！',
+                '得分 ' + score + ' · 还可以继续挑战更高合并',
+                '重新开始', '继续挑战', hideOverlay);
+              return;
+            }
+          }
+        }
+      }
+      if (!movesAvailable()) {
+        over = true;
+        var canUndo = undoStack.length > 0;
+        showOverlay('走投无路了', '最终得分 ' + score + (score >= best ? ' · 新纪录！' : ''),
+          '重新开始', canUndo ? '撤销一步' : null, canUndo ? undoStep : null);
+      }
+    }
+
+    /* ---------- 移动 ---------- */
+    var VEC = {
+      left:  { r: 0, c: -1 },
+      right: { r: 0, c: 1 },
+      up:    { r: -1, c: 0 },
+      down:  { r: 1, c: 0 }
+    };
+
+    function move(dir) {
+      if (over) return;
+      if (busy) { pendingDir = dir; return; }
+      var v = VEC[dir];
+      if (!v) return;
+
+      var pre = snapshotValues();
+      var absorbed = [];
+      var gained = 0, movedAny = false;
+      var myGen = gen;
+
+      for (var r0 = 0; r0 < 4; r0++) {
+        for (var c0 = 0; c0 < 4; c0++) {
+          if (grid[r0][c0]) grid[r0][c0].merged = false;
+        }
+      }
+
+      var rows = [0, 1, 2, 3], cols = [0, 1, 2, 3];
+      if (v.r === 1) rows = [3, 2, 1, 0];
+      if (v.c === 1) cols = [3, 2, 1, 0];
+
+      rows.forEach(function (r) {
+        cols.forEach(function (c) {
+          var o = grid[r][c];
+          if (!o) return;
+          var nr = r, nc = c;
+          while (true) {
+            var er = nr + v.r, ec = nc + v.c;
+            if (er < 0 || er > 3 || ec < 0 || ec > 3 || grid[er][ec]) break;
+            nr = er; nc = ec;
+          }
+          var tr = nr + v.r, tc = nc + v.c;
+          var target = (tr >= 0 && tr < 4 && tc >= 0 && tc < 4) ? grid[tr][tc] : null;
+          if (target && target.val === o.val && !target.merged) {
+            grid[r][c] = 0;
+            target.merged = true;
+            target.val *= 2;
+            gained += target.val;
+            o.r = tr; o.c = tc;
+            absorbed.push(o);
+            movedAny = true;
+          } else if (nr !== r || nc !== c) {
+            grid[r][c] = 0;
+            grid[nr][nc] = o;
+            o.r = nr; o.c = nc;
+            movedAny = true;
+          }
+        });
+      });
+
+      if (!movedAny) return;
+
+      undoStack.push({ grid: pre, score: score });
+      if (undoStack.length > 64) undoStack.shift();
+      undoBtn.disabled = false;
+
+      score += gained;
+      scoreEl.textContent = score;
+      if (score > best) {
+        best = score;
+        bestEl.textContent = best;
+        try { localStorage.setItem('games:2048:best', String(best)); } catch (e) {}
+      }
+
+      // 滑动阶段
+      busy = true;
+      for (var r = 0; r < 4; r++) {
+        for (var c = 0; c < 4; c++) {
+          var t = grid[r][c];
+          if (!t) continue;
+          t.el.style.zIndex = t.merged ? 2 : 1;
+          setPos(t);
+        }
+      }
+      absorbed.forEach(function (o) {
+        o.el.style.zIndex = 1;
+        setPos(o);
+      });
+
+      // 合并结算
+      setTimeout(function () {
+        if (myGen !== gen) return;
+        absorbed.forEach(function (o) { o.el.remove(); });
+        for (var r = 0; r < 4; r++) {
+          for (var c = 0; c < 4; c++) {
+            var t = grid[r][c];
+            if (t && t.merged) {
+              paint(t);
+              t.inEl.classList.add('bump');
+            }
+          }
+        }
+      }, 120);
+
+      // 新块 + 终局判定
+      setTimeout(function () {
+        if (myGen !== gen) return;
+        spawnTile(true);
+        busy = false;
+        checkEnd();
+        if (pendingDir && !over) {
+          var d = pendingDir;
+          pendingDir = null;
+          move(d);
+        }
+      }, 145);
+    }
+
+    function undoStep() {
+      var s = undoStack.pop();
+      if (!s) return;
+      gen++;
+      pendingDir = null;
+      undoBtn.disabled = undoStack.length === 0;
+      over = false;
+      hideOverlay();
+      score = s.score;
+      scoreEl.textContent = score;
+      rebuild(s.grid);
+    }
+
+    function newGame() {
+      gen++;
+      pendingDir = null;
+      undoStack = [];
+      undoBtn.disabled = true;
+      score = 0;
+      won = false;
+      over = false;
+      busy = false;
+      scoreEl.textContent = '0';
+      hideOverlay();
+      rebuild(emptyGrid());
+      spawnTile(true);
+      spawnTile(true);
+    }
+
+    /* ---------- 输入 ---------- */
+    var KEYS = {
+      ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
+      a: 'left', d: 'right', w: 'up', s: 'down',
+      A: 'left', D: 'right', W: 'up', S: 'down'
+    };
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'z' || e.key === 'Z') { undoStep(); return; }
+      var d = KEYS[e.key];
+      if (!d) return;
+      e.preventDefault();
+      move(d);
+    });
+
+    var sx = 0, sy = 0, tracking = false;
+    var stage = document.getElementById('stage');
+    stage.addEventListener('pointerdown', function (e) {
+      tracking = true;
+      sx = e.clientX; sy = e.clientY;
+    });
+    window.addEventListener('pointerup', function (e) {
+      if (!tracking) return;
+      tracking = false;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      var ax = Math.abs(dx), ay = Math.abs(dy);
+      if (Math.max(ax, ay) < 24) return;
+      move(ax > ay ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+    });
+
+    undoBtn.addEventListener('click', undoStep);
+    newBtn.addEventListener('click', newGame);
+    ovMain.addEventListener('click', newGame);
+
+    newGame();
+  })();
+  </script>
+</body>
+</html>
