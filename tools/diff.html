@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="文本对比 —— 左右两栏粘贴文本，逐行对比差异，类似 git diff，纯本地处理。">
+  <title>文本对比 · Nailcui 工具箱</title>
+  <link rel="stylesheet" href="./tools.css">
+  <style>
+    /* ---------- 输入双栏 ---------- */
+    .diff-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .diff-cols textarea {
+      width: 100%;
+      height: 190px;
+      border: 0;
+      outline: none;
+      resize: vertical;
+      background: transparent;
+      color: var(--ink);
+      caret-color: var(--acc);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.7;
+      padding: 12px 16px;
+    }
+    .diff-cols textarea::placeholder { color: var(--ink-faint); }
+
+    .stale-note { display: none; margin-top: 10px; font-size: 12px; color: #f0bd6f; letter-spacing: 0.06em; }
+    .stale-note.show { display: block; }
+
+    /* ---------- 结果 ---------- */
+    #result { margin-top: 4px; }
+
+    .same-card, .hint-card {
+      margin-top: 10px;
+      padding: 26px 18px;
+      text-align: center;
+      border-radius: 14px;
+      font-size: 14.5px;
+      letter-spacing: 0.1em;
+    }
+    .same-card {
+      border: 1px dashed rgba(77, 240, 216, 0.35);
+      color: var(--acc2);
+      background: rgba(77, 240, 216, 0.05);
+    }
+    .hint-card { border: 1px dashed var(--hair); color: var(--ink-faint); }
+
+    .diff-meta { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .diff-meta .chip {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--hair);
+      color: var(--ink-dim);
+      font-family: var(--mono);
+    }
+    .chip.ins { color: #7ee2a0; border-color: rgba(63, 185, 80, 0.4); background: rgba(63, 185, 80, 0.08); }
+    .chip.del { color: #ff9e94; border-color: rgba(248, 81, 73, 0.4); background: rgba(248, 81, 73, 0.08); }
+    .chip.mod { color: #f0bd6f; border-color: rgba(240, 189, 111, 0.4); background: rgba(240, 189, 111, 0.08); }
+
+    .diff-scroll { margin-top: 12px; border: 1px solid var(--hair); border-radius: 14px; overflow: hidden; }
+    .diff-table {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.7;
+      min-width: 620px;
+    }
+    @media (min-width: 761px) {
+      .diff-scroll { max-height: calc(100dvh - 350px); min-height: 180px; overflow: auto; }
+    }
+    .d-head, .d-row { display: grid; grid-template-columns: 48px 1fr 48px 1fr; }
+    .d-head {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--panel);
+      border-bottom: 1px solid var(--hair);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      color: var(--ink-dim);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .d-head span { padding: 8px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .d-head .side-r { border-left: 1px solid var(--hair); }
+    .d-row { border-top: 1px solid rgba(255, 255, 255, 0.035); }
+    .d-row.chunk { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+    .d-ln {
+      text-align: right;
+      padding: 0 8px;
+      color: var(--ink-faint);
+      background: rgba(255, 255, 255, 0.028);
+      border-right: 1px solid var(--hair);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .d-ln.del-n { color: rgba(255, 158, 148, 0.7); background: rgba(248, 81, 73, 0.08); }
+    .d-ln.ins-n { color: rgba(126, 226, 160, 0.75); background: rgba(63, 185, 80, 0.07); }
+    .d-code { padding: 0 12px; white-space: pre-wrap; word-break: break-all; min-width: 0; min-height: 1.7em; }
+    .d-code.side-r { border-left: 1px solid var(--hair); }
+    .d-code.blank {
+      background-image: repeating-linear-gradient(-45deg, transparent 0 7px, rgba(255, 255, 255, 0.025) 7px 14px);
+    }
+    .row-del .d-code.side-l { background: rgba(248, 81, 73, 0.14); }
+    .row-ins .d-code.side-r { background: rgba(63, 185, 80, 0.13); }
+    .row-mod .d-code.side-l { background: rgba(248, 81, 73, 0.09); }
+    .row-mod .d-code.side-r { background: rgba(63, 185, 80, 0.08); }
+    .wm-del { background: rgba(248, 81, 73, 0.32); border-radius: 2px; }
+    .wm-ins { background: rgba(63, 185, 80, 0.3); border-radius: 2px; }
+
+    /* ---------- 移动端 ---------- */
+    @media (max-width: 760px) {
+      .diff-cols { grid-template-columns: 1fr; }
+      .diff-cols textarea { height: 130px; }
+      .diff-scroll { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="back" href="./">‹ 工具箱</a>
+      <div class="brand">
+        <h1>文本对比</h1>
+        <p>左右两栏 · 逐行对比 · 类似 git diff</p>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="btnRun">对比</button>
+        <button class="btn" id="btnSwap">交换</button>
+        <button class="btn" id="btnSample">示例</button>
+        <button class="btn" id="btnClear">清空</button>
+        <button class="btn" id="optWs" aria-pressed="false">忽略空白</button>
+        <button class="btn" id="optCase" aria-pressed="false">忽略大小写</button>
+      </div>
+    </header>
+
+    <section class="diff-cols">
+      <div class="pane">
+        <div class="pane-head">
+          <span>原文（左侧）</span>
+          <span class="grow"><span class="pane-meta" id="metaA">待输入</span></span>
+        </div>
+        <textarea id="txtA" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="粘贴原始文本…"></textarea>
+      </div>
+      <div class="pane">
+        <div class="pane-head">
+          <span>新文本（右侧）</span>
+          <span class="grow"><span class="pane-meta" id="metaB">待输入</span></span>
+        </div>
+        <textarea id="txtB" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="粘贴新文本…"></textarea>
+      </div>
+    </section>
+
+    <div class="stale-note" id="staleNote">内容已修改，点「对比」刷新结果</div>
+
+    <section id="result" aria-live="polite"></section>
+
+    <footer class="credit">Myers diff 纯本地计算 · 不上传数据 · Ctrl/⌘ + Enter 快速对比</footer>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var txtA = document.getElementById('txtA');
+  var txtB = document.getElementById('txtB');
+  var result = document.getElementById('result');
+  var metaA = document.getElementById('metaA');
+  var metaB = document.getElementById('metaB');
+  var staleNote = document.getElementById('staleNote');
+  var btnRun = document.getElementById('btnRun');
+  var btnSwap = document.getElementById('btnSwap');
+  var btnSample = document.getElementById('btnSample');
+  var btnClear = document.getElementById('btnClear');
+  var optWs = document.getElementById('optWs');
+  var optCase = document.getElementById('optCase');
+
+  var opts = { ws: false, cs: false };
+  var hasResult = false;
+  var MAX_LINES = 8000;
+
+  var SAMPLE_A = [
+    '世界迷雾 v1.0',
+    '已点亮城市：26 个',
+    '样式：星火脉冲',
+    '底图：内嵌自绘中国地图',
+    '',
+    '行迹：湘西行迹、杭州出发',
+    '状态：运行中'
+  ].join('\n');
+  var SAMPLE_B = [
+    '世界迷雾 v1.1',
+    '已点亮城市：38 个',
+    '样式：霓虹光圈',
+    '底图：内嵌自绘中国地图',
+    '支持拖拽与缩放',
+    '',
+    '行迹：湘西行迹、杭州出发、三孝村出发',
+    '状态：运行中',
+    '新功能：行迹节点提示'
+  ].join('\n');
+
+  /* ================= Myers O(ND) diff =================
+   * a、b 为数组，eq(x,y) 判等；返回 op 列表：
+   * {t:0, a, b} 相等 / {t:1, a} 删除（消耗 a） / {t:2, b} 插入（消耗 b） */
+  function diffOps(a, b, eq) {
+    var N = a.length, M = b.length;
+    var max = N + M;
+    var ops = [];
+    if (max === 0) return ops;
+    var off = max; // k 取值 [-max, max]，整体右移避免负下标
+    var v = new Int32Array(2 * max + 2);
+    var trace = [];
+    var dFound = -1;
+    for (var d = 0; d <= max; d++) {
+      trace.push(v.slice());
+      for (var k = -d; k <= d; k += 2) {
+        var x;
+        if (k === -d || (k !== d && v[off + k - 1] < v[off + k + 1])) x = v[off + k + 1];
+        else x = v[off + k - 1] + 1;
+        var y = x - k;
+        while (x < N && y < M && eq(a[x], b[y])) { x++; y++; }
+        v[off + k] = x;
+        if (x >= N && y >= M) { dFound = d; break; }
+      }
+      if (dFound >= 0) break;
+    }
+    // 回溯编辑脚本
+    var px = N, py = M;
+    for (var dd = dFound; dd > 0; dd--) {
+      var vt = trace[dd];
+      var kk = px - py;
+      var pk = (kk === -dd || (kk !== dd && vt[off + kk - 1] < vt[off + kk + 1])) ? kk + 1 : kk - 1;
+      var nx = vt[off + pk], ny = nx - pk;
+      while (px > nx && py > ny) { ops.push({ t: 0, a: px - 1, b: py - 1 }); px--; py--; }
+      if (pk === kk - 1) ops.push({ t: 1, a: nx });
+      else ops.push({ t: 2, b: ny });
+      px = nx; py = ny;
+    }
+    while (px > 0 && py > 0) { ops.push({ t: 0, a: px - 1, b: py - 1 }); px--; py--; }
+    while (px > 0) { ops.push({ t: 1, a: --px }); }
+    while (py > 0) { ops.push({ t: 2, b: --py }); }
+    ops.reverse();
+    return ops;
+  }
+
+  /* ================= 对比主流程 ================= */
+  function splitLines(text) {
+    var arr = text.split('\n');
+    if (arr.length && arr[arr.length - 1] === '') arr.pop(); // 末尾换行视为行结束符，不算一行内容
+    return arr;
+  }
+
+  function normalize(s) {
+    var t = s;
+    if (opts.ws) t = t.replace(/\s+/g, ' ').trim();
+    if (opts.cs) t = t.toLowerCase();
+    return t;
+  }
+
+  function runCompare() {
+    var rawA = txtA.value, rawB = txtB.value;
+    if (!rawA.trim() && !rawB.trim()) {
+      hasResult = false;
+      staleNote.classList.remove('show');
+      result.innerHTML = '<div class="hint-card">在左右两栏粘贴文本，点「对比」查看差异</div>';
+      updateMeta();
+      return;
+    }
+    var A = splitLines(rawA), B = splitLines(rawB);
+    if (A.length + B.length > MAX_LINES) {
+      hasResult = false;
+      staleNote.classList.remove('show');
+      result.innerHTML = '<div class="hint-card">文本过长（共 ' + (A.length + B.length) +
+        ' 行，上限 ' + MAX_LINES + ' 行），请分段对比</div>';
+      return;
+    }
+
+    var na = A.map(normalize), nb = B.map(normalize);
+    // 先去掉公共前后缀，缩小 diff 规模
+    var pre = 0;
+    while (pre < na.length && pre < nb.length && na[pre] === nb[pre]) pre++;
+    var suf = 0;
+    while (suf < na.length - pre && suf < nb.length - pre &&
+      na[na.length - 1 - suf] === nb[nb.length - 1 - suf]) suf++;
+    var ops = diffOps(na.slice(pre, na.length - suf), nb.slice(pre, nb.length - suf),
+      function (x, y) { return x === y; });
+    ops.forEach(function (op) {
+      if (op.a != null) op.a += pre;
+      if (op.b != null) op.b += pre;
+    });
+    var full = [];
+    var i;
+    for (i = 0; i < pre; i++) full.push({ t: 0, a: i, b: i });
+    full = full.concat(ops);
+    var tailA = na.length - suf, tailB = nb.length - suf;
+    for (i = 0; i < suf; i++) full.push({ t: 0, a: tailA + i, b: tailB + i });
+
+    renderDiff(A, B, full);
+    hasResult = true;
+    staleNote.classList.remove('show');
+  }
+
+  /* 相邻的删除/插入串成块，按行配对成「修改」；返回行描述列表 */
+  function buildRows(ops) {
+    var rows = [];
+    var i = 0;
+    while (i < ops.length) {
+      if (ops[i].t === 0) { rows.push({ t: 'eq', a: ops[i].a, b: ops[i].b }); i++; continue; }
+      var dels = [], ins = [];
+      while (i < ops.length && ops[i].t === 1) dels.push(ops[i++].a);
+      while (i < ops.length && ops[i].t === 2) ins.push(ops[i++].b);
+      var n = Math.max(dels.length, ins.length);
+      for (var j = 0; j < n; j++) {
+        var dl = dels[j], il = ins[j];
+        rows.push({ t: dl != null && il != null ? 'mod' : (dl != null ? 'del' : 'ins'), a: dl, b: il });
+      }
+    }
+    return rows;
+  }
+
+  /* ================= 渲染 ================= */
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  // 行内分词：中文按字、英文数字按词、空白与符号独立，再跑一次 token 级 diff
+  function tokenize(s) {
+    return s.match(/[\u3400-\u9fff]|[A-Za-z0-9_]+|\s+|[^\s]/g) || [];
+  }
+
+  function inlinePair(aLine, bLine) {
+    var ta = tokenize(aLine), tb = tokenize(bLine);
+    var ops = diffOps(ta, tb, function (x, y) { return x === y; });
+    var ha = '', hb = '';
+    ops.forEach(function (op) {
+      if (op.t === 0) { ha += esc(ta[op.a]); hb += esc(tb[op.b]); }
+      else if (op.t === 1) ha += '<span class="wm-del">' + esc(ta[op.a]) + '</span>';
+      else hb += '<span class="wm-ins">' + esc(tb[op.b]) + '</span>';
+    });
+    return { ha: ha, hb: hb };
+  }
+
+  function renderDiff(A, B, ops) {
+    var rows = buildRows(ops);
+    var st = { ins: 0, del: 0, mod: 0, eq: 0 };
+    rows.forEach(function (r) { st[r.t]++; });
+
+    if (!st.ins && !st.del && !st.mod) {
+      result.innerHTML = '<div class="same-card">✓ 两个文本完全一致</div>' +
+        '<div class="diff-meta"><span class="chip">' + st.eq + ' 行相同</span></div>';
+      return;
+    }
+
+    var html = '<div class="diff-meta">' +
+      '<span class="chip ins">+' + st.ins + ' 新增</span>' +
+      '<span class="chip del">−' + st.del + ' 删除</span>' +
+      (st.mod ? '<span class="chip mod">~' + st.mod + ' 处修改</span>' : '') +
+      '<span class="chip">' + st.eq + ' 行相同</span>' +
+      '</div>';
+
+    html += '<div class="diff-scroll"><div class="diff-table">' +
+      '<div class="d-head"><span>行</span><span>原文</span><span>行</span><span>新文本</span></div>';
+
+    var prevT = null;
+    rows.forEach(function (r) {
+      var hasA = r.a != null, hasB = r.b != null;
+      var aHtml, bHtml;
+      if (r.t === 'eq') { aHtml = esc(A[r.a]); bHtml = esc(B[r.b]); }
+      else if (r.t === 'mod') {
+        var p = inlinePair(A[r.a], B[r.b]);
+        aHtml = p.ha; bHtml = p.hb;
+      }
+      else if (r.t === 'del') { aHtml = esc(A[r.a]); bHtml = ''; }
+      else { aHtml = ''; bHtml = esc(B[r.b]); }
+
+      // 块与块之间加分隔线（从相同区进入差异区，或差异区回到相同区）
+      var chunkCls = (prevT !== null && (prevT === 'eq') !== (r.t === 'eq')) ? ' chunk' : '';
+      prevT = r.t;
+
+      html += '<div class="d-row row-' + r.t + chunkCls + '">' +
+        '<span class="d-ln' + (hasA && r.t !== 'eq' ? ' del-n' : '') + '">' + (hasA ? r.a + 1 : '') + '</span>' +
+        '<span class="d-code side-l' + (hasA ? '' : ' blank') + '">' + aHtml + '</span>' +
+        '<span class="d-ln' + (hasB && r.t !== 'eq' ? ' ins-n' : '') + '">' + (hasB ? r.b + 1 : '') + '</span>' +
+        '<span class="d-code side-r' + (hasB ? '' : ' blank') + '">' + bHtml + '</span>' +
+        '</div>';
+    });
+
+    html += '</div></div>';
+    result.innerHTML = html;
+  }
+
+  /* ================= 杂项 ================= */
+  function updateMeta() {
+    metaA.textContent = txtA.value ? splitLines(txtA.value).length + ' 行 · ' + txtA.value.length + ' 字符' : '待输入';
+    metaB.textContent = txtB.value ? splitLines(txtB.value).length + ' 行 · ' + txtB.value.length + ' 字符' : '待输入';
+  }
+
+  function markStale() {
+    updateMeta();
+    if (hasResult) staleNote.classList.add('show');
+  }
+
+  function bindOpt(btn, key) {
+    btn.addEventListener('click', function () {
+      opts[key] = !opts[key];
+      btn.classList.toggle('on', opts[key]);
+      btn.setAttribute('aria-pressed', opts[key] ? 'true' : 'false');
+      if (hasResult || (txtA.value.trim() && txtB.value.trim())) runCompare();
+    });
+  }
+
+  function bindEditorKeys(ta, onEnter) {
+    ta.addEventListener('keydown', function (e) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        var s = ta.selectionStart, epos = ta.selectionEnd;
+        ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(epos);
+        ta.selectionStart = ta.selectionEnd = s + 2;
+      } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        onEnter();
+      }
+    });
+  }
+
+  /* ================= 事件 ================= */
+  btnRun.addEventListener('click', runCompare);
+  txtA.addEventListener('input', markStale);
+  txtB.addEventListener('input', markStale);
+  bindEditorKeys(txtA, runCompare);
+  bindEditorKeys(txtB, runCompare);
+  bindOpt(optWs, 'ws');
+  bindOpt(optCase, 'cs');
+
+  btnSwap.addEventListener('click', function () {
+    var t = txtA.value;
+    txtA.value = txtB.value;
+    txtB.value = t;
+    updateMeta();
+    if (hasResult) runCompare();
+  });
+
+  btnSample.addEventListener('click', function () {
+    txtA.value = SAMPLE_A;
+    txtB.value = SAMPLE_B;
+    updateMeta();
+    runCompare();
+  });
+
+  btnClear.addEventListener('click', function () {
+    txtA.value = '';
+    txtB.value = '';
+    hasResult = false;
+    staleNote.classList.remove('show');
+    result.innerHTML = '<div class="hint-card">在左右两栏粘贴文本，点「对比」查看差异</div>';
+    updateMeta();
+    txtA.focus();
+  });
+
+  /* ================= 启动 ================= */
+  txtA.value = SAMPLE_A;
+  txtB.value = SAMPLE_B;
+  updateMeta();
+  runCompare();
+})();
+</script>
+</body>
+</html>

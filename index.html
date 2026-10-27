@@ -46,7 +46,7 @@
   }
   .m-line { width: 56px; height: 1px; background: #d8d8d8; margin: 0 auto 22px; }
   .m-sub { font-size: 15px; color: #666; margin-bottom: 38px; letter-spacing: .12em; }
-  .m-links { display: flex; gap: 30px; justify-content: center; }
+  .m-links { display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; }
   .m-link {
     display: inline-block;
     font-size: 14px;
@@ -197,7 +197,7 @@
   .mag-rule::before, .mag-rule::after { content: ""; flex: 1; height: 1px; background: #c9bfa8; }
   .mag-rule i { width: 7px; height: 7px; background: #b0532f; transform: rotate(45deg); }
   .mag-sub { font-size: 16px; line-height: 2; color: #5c5443; max-width: 46ch; margin: 0 auto 40px; }
-  .mag-links { display: flex; gap: 16px; justify-content: center; align-items: baseline; }
+  .mag-links { display: flex; gap: 16px; justify-content: center; align-items: baseline; flex-wrap: wrap; }
   .mag-sep { color: #8a7f6a; }
   .mag-link {
     display: inline-block;
@@ -337,6 +337,7 @@
       <div class="m-links fade-up d4">
         <a class="m-link" href="./fog.html">世界迷雾 →</a>
         <a class="m-link" href="./track.html">行迹轨迹 →</a>
+        <a class="m-link" href="./tools/">在线工具 →</a>
         <a class="m-link" href="https://github.com/nailcui" target="_blank" rel="noopener">GitHub →</a>
       </div>
     </div>
@@ -368,6 +369,7 @@
         <div class="a-btns fade-up d2">
           <a class="a-btn" href="./fog.html">🌫 世界迷雾</a>
           <a class="a-btn a-btn-ghost" href="./track.html">🧭 行迹轨迹</a>
+          <a class="a-btn a-btn-ghost" href="./tools/">🧰 在线工具</a>
           <a class="a-btn a-btn-ghost" href="https://github.com/nailcui" target="_blank" rel="noopener">GitHub</a>
         </div>
       </div>
@@ -387,6 +389,8 @@
         <span class="mag-sep">·</span>
         <a class="mag-link" href="./track.html">行迹轨迹</a>
         <span class="mag-sep">·</span>
+        <a class="mag-link" href="./tools/">在线工具</a>
+        <span class="mag-sep">·</span>
         <a class="mag-link" href="https://github.com/nailcui" target="_blank" rel="noopener">GITHUB · NAILCUI</a>
       </div>
       <footer class="mag-foot fade-up d4">— 01 —</footer>
@@ -403,6 +407,7 @@
       <div class="s-btns fade-up d3">
         <a class="s-btn" href="./fog.html">🌫 世界迷雾</a>
         <a class="s-btn s-btn-ghost" href="./track.html">🧭 行迹轨迹</a>
+        <a class="s-btn s-btn-ghost" href="./tools/">🧰 在线工具</a>
         <a class="s-btn s-btn-ghost" href="https://github.com/nailcui" target="_blank" rel="noopener">GitHub</a>
       </div>
     </div>
@@ -449,6 +454,7 @@
     { type: 'out', text: '站点重建中，敬请期待 :)', dim: true },
     { type: 'in',  text: 'open ./fog.html', href: './fog.html', label: '世界迷雾 · World Fog ↗' },
     { type: 'in',  text: 'open ./track.html', href: './track.html', label: '行迹轨迹 · Track ↗' },
+    { type: 'in',  text: 'open ./tools/', href: './tools/', label: '在线工具 · Tools ↗' },
     { type: 'in',  text: 'open github.com/nailcui', href: 'https://github.com/nailcui', label: 'github.com/nailcui ↗', blank: true }
   ];
 

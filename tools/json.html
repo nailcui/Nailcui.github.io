@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="JSON 格式化 —— 校验、美化、压缩，语法高亮折叠树，纯本地处理。">
+  <title>JSON 格式化 · Nailcui 工具箱</title>
+  <link rel="stylesheet" href="./tools.css">
+  <style>
+    /* 全屏应用式布局：顶栏 + 双栏铺满 */
+    body { overflow: hidden; }
+    .page { height: 100vh; height: 100dvh; min-height: 0; }
+
+    .panes {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    /* ---------- 左：输入 ---------- */
+    .pane-in textarea {
+      flex: 1;
+      width: 100%;
+      min-height: 60px;
+      border: 0;
+      outline: none;
+      resize: none;
+      background: transparent;
+      color: var(--ink);
+      caret-color: var(--acc);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.75;
+      padding: 12px 16px;
+      white-space: pre;
+      overflow: auto;
+    }
+    .pane-in textarea::placeholder { color: var(--ink-faint); }
+
+    /* ---------- 右：结果折叠树 ---------- */
+    .tree-wrap { flex: 1; min-height: 0; overflow: auto; }
+    #tree {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.85;
+      padding: 6px 16px 18px;
+      width: max-content;
+      min-width: 100%;
+    }
+    .tree-hint {
+      color: var(--ink-faint);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      padding: 10px 2px;
+    }
+    .jn-line, .jn-head, .jn-foot { white-space: nowrap; }
+    .jn-head { cursor: pointer; border-radius: 6px; }
+    .jn-head:hover { background: rgba(77, 240, 216, 0.07); }
+    .jn-kids {
+      margin-left: 10px;
+      padding-left: 14px;
+      border-left: 1px dashed rgba(255, 255, 255, 0.12);
+    }
+    .j-arrow {
+      display: inline-block;
+      width: 0; height: 0;
+      border-left: 5px solid rgba(205, 232, 227, 0.55);
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      margin: 0 7px 1px 2px;
+      transition: transform 0.18s;
+      vertical-align: middle;
+    }
+    .jn > .jn-head .j-arrow { transform: rotate(90deg); }
+    .jn.closed > .jn-head .j-arrow { transform: rotate(0deg); }
+    .jn.empty > .jn-head { cursor: default; }
+    .jn.empty > .jn-head:hover { background: transparent; }
+    .jn.empty > .jn-head .j-arrow { visibility: hidden; }
+    .j-badge, .j-close-badge { display: none; }
+    .jn.closed > .jn-head .j-badge { display: inline-block; }
+    .jn.closed > .jn-head .j-close-badge { display: inline; }
+    .jn.closed > .jn-kids, .jn.closed > .jn-foot { display: none; }
+    .j-key { color: #7ee0d2; }
+    .v-str { color: #a8d98a; }
+    .v-num { color: #f0bd6f; }
+    .v-bool { color: #c792ea; }
+    .v-null { color: #8b949e; font-style: italic; }
+    .punc { color: rgba(205, 232, 227, 0.4); }
+    .j-brace { color: rgba(232, 246, 243, 0.82); }
+    .j-badge {
+      font-size: 10.5px;
+      color: var(--ink-faint);
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 999px;
+      padding: 1px 8px;
+      margin-left: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    }
+
+    /* ---------- 错误卡片 ---------- */
+    .err-card {
+      margin: 18px 16px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 123, 114, 0.4);
+      background: rgba(248, 81, 73, 0.1);
+      color: #ffb4ad;
+      font-size: 13px;
+      line-height: 1.9;
+      font-family: var(--mono);
+      word-break: break-all;
+    }
+    .err-card b {
+      display: block;
+      margin-bottom: 4px;
+      color: #ff8b84;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+      letter-spacing: 0.08em;
+    }
+    .hidden { display: none; }
+
+    /* ---------- 移动端：双栏变页签 ---------- */
+    .tabs {
+      display: none;
+      flex: none;
+      margin-bottom: 10px;
+      padding: 4px;
+      border-radius: 999px;
+      background: var(--glass);
+      border: 1px solid var(--hair);
+    }
+    .tabs button {
+      flex: 1;
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--ink-dim);
+      font-size: 13px;
+      padding: 8px 0;
+      border-radius: 999px;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+    }
+    .tabs button.on { background: rgba(77, 240, 216, 0.16); color: var(--acc2); font-weight: 600; }
+
+    @media (max-width: 760px) {
+      .panes { grid-template-columns: 1fr; }
+      .pane-out { display: none; }
+      .panes.mode-out .pane-in { display: none; }
+      .panes.mode-out .pane-out { display: flex; }
+      .tabs { display: flex; }
+      .pane-head { padding: 8px 10px; letter-spacing: 0.06em; }
+      .mini-btn { padding: 3px 7px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="back" href="./">‹ 工具箱</a>
+      <div class="brand">
+        <h1>JSON 格式化</h1>
+        <p>校验 · 美化 · 压缩 · 折叠树</p>
+      </div>
+      <div class="actions">
+        <select class="btn" id="indentSel" aria-label="缩进宽度">
+          <option value="2">缩进 2 空格</option>
+          <option value="4">缩进 4 空格</option>
+        </select>
+        <button class="btn primary" id="btnFormat">格式化</button>
+        <button class="btn" id="btnMin">压缩</button>
+        <button class="btn" id="btnSample">示例</button>
+        <button class="btn" id="btnClear">清空</button>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="输入 / 结果切换">
+      <button type="button" id="tabIn" class="on" role="tab">输入</button>
+      <button type="button" id="tabOut" role="tab">结果</button>
+    </div>
+
+    <main class="panes" id="panes">
+      <section class="pane pane-in">
+        <div class="pane-head">
+          <span>输入</span>
+          <span class="grow"><span class="pane-meta" id="inMeta">待输入</span></span>
+        </div>
+        <textarea id="jsonIn" spellcheck="false" autocapitalize="off" autocomplete="off"
+          placeholder="在此粘贴 JSON 文本…&#10;&#10;左侧输入，右侧实时渲染折叠树；Ctrl/⌘ + Enter 快速格式化"></textarea>
+      </section>
+
+      <section class="pane pane-out">
+        <div class="pane-head">
+          <span>结果</span>
+          <span class="grow">
+            <span class="pane-meta" id="outMeta">—</span>
+            <button class="mini-btn" id="btnFold">折叠</button>
+            <button class="mini-btn" id="btnUnfold">展开</button>
+            <button class="mini-btn" id="btnCopy">复制结果</button>
+          </span>
+        </div>
+        <div class="tree-wrap">
+          <div class="err-card hidden" id="errCard"><b>✕ JSON 解析失败</b><span id="errMsg"></span></div>
+          <div id="tree"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="credit">解析与渲染均在本机完成 · 不上传任何数据 · 支持 2 / 4 空格缩进</footer>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var input = document.getElementById('jsonIn');
+  var tree = document.getElementById('tree');
+  var errCard = document.getElementById('errCard');
+  var errMsg = document.getElementById('errMsg');
+  var inMeta = document.getElementById('inMeta');
+  var outMeta = document.getElementById('outMeta');
+  var btnFormat = document.getElementById('btnFormat');
+  var btnMin = document.getElementById('btnMin');
+  var btnCopy = document.getElementById('btnCopy');
+  var btnSample = document.getElementById('btnSample');
+  var btnClear = document.getElementById('btnClear');
+  var btnFold = document.getElementById('btnFold');
+  var btnUnfold = document.getElementById('btnUnfold');
+  var indentSel = document.getElementById('indentSel');
+  var panes = document.getElementById('panes');
+  var tabIn = document.getElementById('tabIn');
+  var tabOut = document.getElementById('tabOut');
+
+  var state = { parsed: null, error: null, pretty: '' };
+  var timer = 0;
+
+  var SAMPLE = [
+    '{',
+    '  "项目": "Nailcui 工具箱",',
+    '  "version": "1.0.0",',
+    '  "online": true,',
+    '  "stars": 42,',
+    '  "rating": 9.5,',
+    '  "tags": ["json", "格式化", "前端"],',
+    '  "author": {',
+    '    "name": "nailcui",',
+    '    "url": "https://github.com/nailcui"',
+    '  },',
+    '  "features": [',
+    '    { "icon": "高亮", "desc": "语法着色", "on": true },',
+    '    { "icon": "折叠", "desc": "树形视图", "on": true },',
+    '    null',
+    '  ],',
+    '  "config": { "indent": 2, "compress": false, "cache": null }',
+    '}'
+  ].join('\n');
+
+  /* ---------------- 基础 ---------------- */
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function typeOf(v) {
+    if (v === null) return 'null';
+    if (Array.isArray(v)) return 'array';
+    return typeof v;
+  }
+
+  function parseInput() {
+    var text = input.value;
+    if (!text.trim()) {
+      state.parsed = null;
+      state.error = 'empty';
+      return;
+    }
+    try {
+      state.parsed = JSON.parse(text);
+      state.error = null;
+      state.pretty = JSON.stringify(state.parsed, null, +indentSel.value);
+    } catch (e) {
+      state.parsed = null;
+      var m = /position (\d+)/i.exec(e.message || '');
+      state.error = { msg: e.message || String(e), pos: m ? +m[1] : null };
+    }
+  }
+
+  function lineCol(text, pos) {
+    var line = 1, col = 1;
+    for (var i = 0; i < pos && i < text.length; i++) {
+      if (text.charCodeAt(i) === 10) { line++; col = 1; } else col++;
+    }
+    return { line: line, col: col };
+  }
+
+  function describe(v) {
+    var t = typeOf(v);
+    var label = { object: 'Object', array: 'Array', string: 'String', number: 'Number', boolean: 'Boolean', 'null': 'Null' }[t];
+    var extra = '';
+    if (t === 'object') extra = ' · ' + Object.keys(v).length + ' 键';
+    if (t === 'array') extra = ' · ' + v.length + ' 项';
+    return label + extra + ' · 格式化 ' + state.pretty.length + ' 字符';
+  }
+
+  /* ---------------- 折叠树渲染 ---------------- */
+  function valueHtml(v) {
+    var t = typeOf(v);
+    if (t === 'null') return '<span class="v-null">null</span>';
+    if (t === 'string') return '<span class="v-str">"' + esc(v) + '"</span>';
+    if (t === 'number') return '<span class="v-num">' + esc(String(v)) + '</span>';
+    if (t === 'boolean') return '<span class="v-bool">' + v + '</span>';
+    return '';
+  }
+
+  // key: 对象键名；数组子项传 null。isLast 决定是否带逗号
+  function buildNode(key, v, isLast) {
+    var wrap = document.createElement('div');
+    var comma = isLast ? '' : '<span class="punc">,</span>';
+    var keyHtml = key === null ? '' : '<span class="j-key">"' + esc(key) + '"</span><span class="punc">: </span>';
+    var t = typeOf(v);
+
+    if (t === 'object' || t === 'array') {
+      var isArr = t === 'array';
+      var keys = isArr ? v.map(function (_, i) { return String(i); }) : Object.keys(v);
+      var open = isArr ? '[' : '{';
+      var close = isArr ? ']' : '}';
+      var countLabel = keys.length === 1 ? '1 项' : keys.length + ' 项';
+
+      wrap.className = 'jn' + (keys.length ? '' : ' empty');
+      var head = document.createElement('div');
+      head.className = 'jn-head';
+      head.innerHTML = '<span class="j-arrow"></span>' + keyHtml +
+        '<span class="j-brace">' + open + '</span>' +
+        '<span class="j-badge">' + countLabel + '</span>' +
+        '<span class="j-close-badge j-brace">' + close + '</span>' + comma;
+      wrap.appendChild(head);
+
+      if (keys.length) {
+        var kids = document.createElement('div');
+        kids.className = 'jn-kids';
+        keys.forEach(function (k, i) {
+          kids.appendChild(buildNode(isArr ? null : k, v[k], i === keys.length - 1));
+        });
+        var foot = document.createElement('div');
+        foot.className = 'jn-foot';
+        foot.innerHTML = '<span class="j-brace">' + close + '</span>' + comma;
+        wrap.appendChild(kids);
+        wrap.appendChild(foot);
+      }
+      return wrap;
+    }
+
+    wrap.className = 'jn';
+    var line = document.createElement('div');
+    line.className = 'jn-line';
+    line.innerHTML = keyHtml + valueHtml(v) + comma;
+    wrap.appendChild(line);
+    return wrap;
+  }
+
+  function render() {
+    parseInput();
+
+    var v = input.value;
+    inMeta.textContent = v.length ? v.length + ' 字符 · ' + v.split('\n').length + ' 行' : '待输入';
+
+    tree.innerHTML = '';
+    errCard.classList.add('hidden');
+    btnFormat.disabled = btnMin.disabled = btnCopy.disabled = !state.parsed;
+
+    if (state.error === 'empty') {
+      outMeta.textContent = '—';
+      tree.innerHTML = '<div class="tree-hint">在左侧粘贴 JSON，这里会实时渲染可折叠的树形视图</div>';
+      return;
+    }
+    if (state.error) {
+      var posText = '';
+      if (state.error.pos != null) {
+        var lc = lineCol(input.value, state.error.pos);
+        posText = '（第 ' + lc.line + ' 行 · 第 ' + lc.col + ' 列附近）';
+      }
+      errMsg.textContent = state.error.msg + posText;
+      errCard.classList.remove('hidden');
+      outMeta.textContent = '解析失败';
+      return;
+    }
+    tree.appendChild(buildNode(null, state.parsed, true));
+    outMeta.textContent = describe(state.parsed);
+  }
+
+  /* ---------------- 操作 ---------------- */
+  function applyPretty(minify) {
+    parseInput();
+    if (!state.parsed) return;
+    input.value = minify ? JSON.stringify(state.parsed) : JSON.stringify(state.parsed, null, +indentSel.value);
+    render();
+  }
+
+  function setAllFolded(folded) {
+    var nodes = tree.querySelectorAll('.jn:not(.empty)');
+    for (var i = 0; i < nodes.length; i++) nodes[i].classList.toggle('closed', folded);
+  }
+
+  function copyText(text, btn) {
+    var old = btn.textContent;
+    var done = function () {
+      btn.textContent = '✓ 已复制';
+      setTimeout(function () { btn.textContent = old; }, 1200);
+    };
+    var fallback = function () {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;top:-999px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { /* 忽略 */ }
+      document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function setTab(showOut) {
+    panes.classList.toggle('mode-out', showOut);
+    tabIn.classList.toggle('on', !showOut);
+    tabOut.classList.toggle('on', showOut);
+  }
+
+  /* ---------------- 事件 ---------------- */
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    timer = setTimeout(render, 220);
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      var s = input.selectionStart, epos = input.selectionEnd;
+      input.value = input.value.slice(0, s) + '  ' + input.value.slice(epos);
+      input.selectionStart = input.selectionEnd = s + 2;
+    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      applyPretty(false);
+    }
+  });
+
+  tree.addEventListener('click', function (e) {
+    var head = e.target.closest('.jn-head');
+    if (!head) return;
+    var node = head.parentElement;
+    if (node.classList.contains('empty')) return;
+    node.classList.toggle('closed');
+  });
+
+  btnFormat.addEventListener('click', function () { applyPretty(false); });
+  btnMin.addEventListener('click', function () { applyPretty(true); });
+  btnSample.addEventListener('click', function () { input.value = SAMPLE; render(); });
+  btnClear.addEventListener('click', function () { input.value = ''; render(); input.focus(); });
+  btnFold.addEventListener('click', function () { setAllFolded(true); });
+  btnUnfold.addEventListener('click', function () { setAllFolded(false); });
+  btnCopy.addEventListener('click', function () {
+    if (state.parsed) copyText(state.pretty, btnCopy);
+  });
+  indentSel.addEventListener('change', render);
+
+  tabIn.addEventListener('click', function () { setTab(false); });
+  tabOut.addEventListener('click', function () { setTab(true); });
+
+  /* ---------------- 启动 ---------------- */
+  input.value = SAMPLE;
+  render();
+})();
+</script>
+</body>
+</html>
