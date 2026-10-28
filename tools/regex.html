@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="正则测试器 —— 上方输入正则、下方粘贴文本，逐键实时高亮匹配与捕获组，纯本地处理。">
+  <title>正则测试器 · Nailcui 工具箱</title>
+  <link rel="stylesheet" href="./tools.css">
+  <style>
+    /* ---------- 正则输入区 ---------- */
+    .rx-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 13px 16px 4px;
+    }
+    .rx-slash {
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--acc);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #pat {
+      flex: 1;
+      min-width: 0;
+      background: transparent;
+      border: 0;
+      outline: none;
+      color: var(--ink);
+      caret-color: var(--acc);
+      font-family: var(--mono);
+      font-size: 14.5px;
+      padding: 4px 0;
+    }
+    #pat::placeholder { color: var(--ink-faint); }
+    #flShow { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); min-width: 18px; }
+
+    .rx-flags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 9px 16px 0;
+    }
+    .flag {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3.5px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--hair);
+      background: transparent;
+      color: var(--ink-faint);
+      font-family: var(--mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: 0.2s;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .flag b { font-weight: 700; }
+    .flag i { font-style: normal; font-size: 10.5px; letter-spacing: 0.05em; opacity: 0.85; }
+    .flag:hover { color: var(--ink-dim); border-color: rgba(255, 255, 255, 0.2); }
+    .flag.on { color: var(--acc2); border-color: var(--line); background: rgba(77, 240, 216, 0.1); }
+    .flag.on b { color: var(--acc); }
+
+    .rx-chips {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 16px 13px;
+    }
+    .rx-chips .lbl { font-size: 11px; color: var(--ink-faint); letter-spacing: 0.1em; margin-right: 3px; }
+    .qi {
+      appearance: none;
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--hair);
+      background: transparent;
+      color: var(--ink-dim);
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .qi:hover { color: var(--acc2); border-color: var(--line); background: rgba(77, 240, 216, 0.06); }
+
+    .rx-err {
+      display: none;
+      margin: 0 16px 13px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 123, 114, 0.4);
+      background: rgba(248, 81, 73, 0.08);
+      color: #ff9e94;
+      font-size: 12.5px;
+      line-height: 1.6;
+      word-break: break-all;
+    }
+    .rx-err.show { display: block; }
+
+    /* ---------- 下方工作区：文本 + 结果列表 ---------- */
+    .work {
+      flex: 1;
+      min-height: 380px;
+      max-height: calc(100dvh - 248px); /* 钉在视口内：内容再长也不撑高页面，两侧各自内部滚动 */
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 316px;
+      grid-template-rows: minmax(0, 1fr);
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      border: 1px solid var(--hair);
+      color: var(--ink-dim);
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+    .chip.hot { color: #f0bd6f; border-color: rgba(240, 189, 111, 0.4); background: rgba(240, 189, 111, 0.08); }
+    .chip.bad { color: #ff9e94; border-color: rgba(248, 81, 73, 0.4); background: rgba(248, 81, 73, 0.08); }
+    .pane-head .grow { gap: 8px; }
+
+    /* 文本编辑区：高亮层在下、透明 textarea 在上，两层逐字对齐 */
+    .editor { position: relative; flex: 1; min-height: 0; }
+    #hl, #txt {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      border: 0;
+      padding: 12px 16px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.75;
+      letter-spacing: normal;
+      white-space: pre-wrap;
+      word-break: break-all;
+      tab-size: 4;
+      -moz-tab-size: 4;
+    }
+    #hl { overflow: hidden; pointer-events: none; color: var(--ink); z-index: 0; }
+    #txt {
+      background: transparent;
+      color: var(--ink);
+      caret-color: var(--acc);
+      outline: none;
+      resize: none;
+      overflow: auto;
+      z-index: 1;
+    }
+    #txt::placeholder { color: var(--ink-faint); }
+    #txt::selection { background: rgba(77, 240, 216, 0.25); }
+
+    .m { border-radius: 3px; background: rgba(240, 189, 111, 0.24); box-shadow: 0 0 0 1px rgba(240, 189, 111, 0.28); }
+    .g { border-radius: 2px; }
+    .g.gd1 { background: rgba(126, 226, 160, 0.3); }
+    .g.gd2 { background: rgba(140, 247, 232, 0.3); }
+    .g.gd3 { background: rgba(255, 158, 148, 0.3); }
+    .g.gd4 { background: rgba(197, 159, 255, 0.34); }
+    .m.flash {
+      background: rgba(77, 240, 216, 0.5);
+      box-shadow: 0 0 0 2px rgba(77, 240, 216, 0.7), 0 0 18px rgba(77, 240, 216, 0.45);
+    }
+
+    /* 匹配结果列表 */
+    .list-pane { min-height: 0; }
+    #mlist {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .mi {
+      border: 1px solid var(--hair);
+      border-radius: 11px;
+      padding: 8px 11px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .mi:hover, .mi:focus-visible { border-color: var(--line); background: rgba(77, 240, 216, 0.05); outline: none; }
+    .mi-top { display: flex; gap: 8px; align-items: baseline; }
+    .mi-n {
+      flex: none;
+      min-width: 2em;
+      text-align: right;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--acc);
+      opacity: 0.85;
+    }
+    .mi-s { font-family: var(--mono); font-size: 12.5px; color: var(--ink); word-break: break-all; }
+    .mi-g { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+    .mi-g span { font-size: 11px; color: var(--ink-dim); font-family: var(--mono); word-break: break-all; }
+    .mi-g b {
+      font-weight: 600;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      margin-right: 5px;
+      border: 1px solid var(--hair);
+      color: var(--ink-faint);
+    }
+    .empty {
+      color: var(--ink-faint);
+      font-size: 12.5px;
+      text-align: center;
+      padding: 28px 12px;
+      letter-spacing: 0.08em;
+      line-height: 1.8;
+    }
+
+    /* ---------- 移动端 ---------- */
+    @media (max-width: 860px) {
+      .work { display: flex; flex-direction: column; min-height: 0; }
+      .editor { flex: none; height: 44vh; min-height: 240px; }
+      #mlist { max-height: 260px; }
+      .rx-row { padding: 12px 14px 2px; }
+      .rx-flags, .rx-chips { padding-left: 14px; padding-right: 14px; }
+      .rx-err { margin-left: 14px; margin-right: 14px; }
+      .flag i { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="back" href="./">‹ 工具箱</a>
+      <div class="brand">
+        <h1>正则测试器</h1>
+        <p>实时高亮 · 捕获组定位 · 纯本地匹配</p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btnSample">示例</button>
+        <button class="btn" id="btnClear">清空</button>
+      </div>
+    </header>
+
+    <section class="pane">
+      <div class="rx-row">
+        <span class="rx-slash">/</span>
+        <input id="pat" spellcheck="false" autocapitalize="off" autocomplete="off"
+          placeholder="输入正则表达式，如 \d{4}-\d{2}-\d{2}" aria-label="正则表达式">
+        <span class="rx-slash">/</span>
+        <span id="flShow">g</span>
+      </div>
+      <div class="rx-flags" id="flags"></div>
+      <div class="rx-chips" id="chips"><span class="lbl">常用</span></div>
+      <div class="rx-err" id="err" role="alert"></div>
+    </section>
+
+    <section class="work">
+      <div class="pane text-pane">
+        <div class="pane-head">
+          <span>待匹配文本</span>
+          <span class="grow">
+            <span class="chip" id="count">…</span>
+            <span class="pane-meta" id="txtMeta"></span>
+          </span>
+        </div>
+        <div class="editor">
+          <div id="hl" aria-hidden="true"></div>
+          <textarea id="txt" spellcheck="false" autocapitalize="off" autocomplete="off"
+            placeholder="粘贴或输入待匹配的文本…"></textarea>
+        </div>
+      </div>
+      <div class="pane list-pane">
+        <div class="pane-head">
+          <span>匹配结果</span>
+          <span class="grow"><span class="pane-meta" id="listMeta"></span></span>
+        </div>
+        <div id="mlist" role="list"></div>
+      </div>
+    </section>
+
+    <footer class="credit">JavaScript RegExp 实时匹配 · 纯本地计算 · 不上传任何数据</footer>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  var pat = document.getElementById('pat');
+  var flShow = document.getElementById('flShow');
+  var flagsBox = document.getElementById('flags');
+  var chipsBox = document.getElementById('chips');
+  var errBox = document.getElementById('err');
+  var count = document.getElementById('count');
+  var txtMeta = document.getElementById('txtMeta');
+  var txt = document.getElementById('txt');
+  var hl = document.getElementById('hl');
+  var listMeta = document.getElementById('listMeta');
+  var mlist = document.getElementById('mlist');
+  var btnSample = document.getElementById('btnSample');
+  var btnClear = document.getElementById('btnClear');
+
+  var TEXT_CAP = 500000;  // 参与匹配的最大字符数
+  var STORE_CAP = 1000;   // 最多保存的匹配明细
+  var HL_CAP = 500;       // 最多内联高亮的匹配数
+  var LIST_CAP = 200;     // 最多列出的匹配条数
+  var WORKER_TIMEOUT = 600;
+
+  var FLAG_DEFS = [
+    { f: 'g', label: '全部' },
+    { f: 'i', label: '忽略大小写' },
+    { f: 'm', label: '多行 ^$' },
+    { f: 's', label: '点号含换行' },
+    { f: 'u', label: 'Unicode' }
+  ];
+  var flagState = { g: true, i: false, m: false, s: false, u: false };
+
+  var QUICK = [
+    { label: '邮箱', re: '[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+' },
+    { label: '手机号', re: '1[3-9]\\d{9}' },
+    { label: 'URL', re: 'https?://[^\\s]+' },
+    { label: '数字', re: '-?\\d+(?:\\.\\d+)?' },
+    { label: '中文', re: '[\\u4e00-\\u9fff]+' },
+    { label: '日期', re: '\\d{4}-\\d{2}-\\d{2}' },
+    { label: '空白', re: '\\s+' },
+    { label: 'IP', re: '(?:\\d{1,3}\\.){3}\\d{1,3}' }
+  ];
+
+  var SAMPLE_PAT = '\\d{4}-\\d{2}-\\d{2}|1[3-9]\\d{9}';
+  var SAMPLE_TXT = [
+    '【示例】站点备忘 · 这段文字可以随意修改',
+    '',
+    '世界迷雾已点亮 38 座城市。最近一次点亮：2026-10-27 苍南，',
+    '此前 2026-10-27 永嘉、2026-10-11 三孝村、2026-10-10 湘西一线。',
+    '紧急联系人：13857886688（示例号码），客服 15968120099。',
+    '邮箱：nailcui@example.com，备用 fog@nailcui.github.io。',
+    '主页：https://nailcui.github.io/tools',
+    'G318 计划：成都 → 康定 → 理塘 → 拉萨，全程 2100 余公里。',
+    '黄河之旅：济南、郑州、延安、银川，约 5464 km。',
+    '',
+    '提示：在上方修改正则，下方匹配结果会实时高亮；',
+    '点右侧「匹配结果」卡片，可定位并闪烁标记原文位置。',
+    '再试试正则 [A-Za-z]+|\\d+ 或 雾\\w*。'
+  ].join('\n');
+
+  /* ================= 匹配核心 =================
+   * 同一段函数既跑在 Worker 里（防灾难性回溯卡死页面），也在 Worker 不可用时主线程兜底。
+   * 支持 indices（d 旗标）时携带捕获组位置，用于嵌套高亮。 */
+  function matchJob(d) {
+    var out = { id: d.id, ok: false, error: '', total: 0, truncated: false, matches: [], hasIndices: false };
+    function push(m) {
+      var gs = [];
+      if (m.length > 1) {
+        for (var i = 1; i < m.length; i++) {
+          if (m[i] === undefined) continue;
+          var s = -1, e = -1;
+          if (out.hasIndices && m.indices && m.indices[i]) { s = m.indices[i][0]; e = m.indices[i][1]; }
+          gs.push({ n: i, s: s, e: e, v: m[i] });
+        }
+      }
+      out.matches.push({ i: m.index, s: m[0], gs: gs });
+    }
+    try {
+      var re;
+      try { re = new RegExp(d.pattern, d.flags + 'd'); out.hasIndices = true; }
+      catch (e1) { re = new RegExp(d.pattern, d.flags); }
+      out.ok = true;
+      var text = d.text;
+      if (d.global) {
+        var guard = 0;
+        while (guard < 200000) {
+          guard++;
+          var m = re.exec(text);
+          if (!m) break;
+          out.total++;
+          if (m[0].length > 0 && out.matches.length < d.limit) push(m);
+          if (m[0].length === 0) {
+            re.lastIndex++;
+            if (re.lastIndex > text.length) break;
+          }
+          if (out.total >= 200000) { out.truncated = true; break; }
+        }
+      } else {
+        var m1 = re.exec(text);
+        if (m1) { out.total = 1; if (m1[0].length > 0) push(m1); }
+      }
+    } catch (err) {
+      out.ok = false;
+      out.error = (err && err.message) || String(err);
+    }
+    return out;
+  }
+
+  var workerSrc = 'self.onmessage=function(e){self.postMessage((' +
+    matchJob.toString() + ')(e.data));};';
+  var worker = null, workerBroken = false, pendingT = null, lastId = 0, debounceT = 0;
+
+  function ensureWorker() {
+    if (worker || workerBroken) return;
+    try {
+      var url = URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' }));
+      worker = new Worker(url);
+      worker.onmessage = function (e) {
+        var res = e.data;
+        if (!res || res.id !== lastId) return;
+        if (pendingT) { clearTimeout(pendingT); pendingT = null; }
+        onResult(res);
+      };
+      worker.onerror = function () {
+        workerBroken = true;
+        try { worker.terminate(); } catch (e2) { /* 忽略 */ }
+        worker = null;
+      };
+    } catch (e) {
+      workerBroken = true;
+      worker = null;
+    }
+  }
+
+  /* ================= 主流程 ================= */
+  function curFlags() {
+    var s = '';
+    for (var i = 0; i < FLAG_DEFS.length; i++) if (flagState[FLAG_DEFS[i].f]) s += FLAG_DEFS[i].f;
+    return s;
+  }
+
+  function run() {
+    var raw = txt.value;
+    var text = raw.length > TEXT_CAP ? raw.slice(0, TEXT_CAP) : raw;
+    updateTxtMeta();
+    var pattern = pat.value;
+    var flags = curFlags();
+    flShow.textContent = flags;
+    if (!pattern) { setStatePlain(text, '待输入'); return; }
+    if (!text) { setStatePlain(text, '待输入文本'); return; }
+    var d = { id: ++lastId, pattern: pattern, flags: flags, global: flagState.g, text: text, limit: STORE_CAP };
+    ensureWorker();
+    if (worker) {
+      if (pendingT) clearTimeout(pendingT);
+      pendingT = setTimeout(function () {
+        pendingT = null;
+        try { worker.terminate(); } catch (e) { /* 忽略 */ }
+        worker = null;
+        showError('匹配超时：表达式可能引发灾难性回溯，请试着简化（如避免嵌套量词）');
+      }, WORKER_TIMEOUT);
+      worker.postMessage(d);
+    } else {
+      onResult(matchJob(d));
+    }
+  }
+
+  function schedule() {
+    clearTimeout(debounceT);
+    debounceT = setTimeout(run, 90);
+  }
+
+  function setStatePlain(text, chipText) {
+    errBox.classList.remove('show');
+    setChip(chipText, '');
+    hl.textContent = text;
+    listMeta.textContent = '';
+    mlist.innerHTML = '<div class="empty">输入正则后，这里会列出全部匹配；<br>点卡片可定位到原文对应位置</div>';
+  }
+
+  function showError(msg) {
+    errBox.textContent = '⚠ ' + msg;
+    errBox.classList.add('show');
+    setChip('正则错误', 'bad');
+  }
+
+  function setChip(text, cls) {
+    count.textContent = text;
+    count.className = 'chip' + (cls ? ' ' + cls : '');
+  }
+
+  function onResult(res) {
+    if (!res.ok) { showError('无效正则：' + res.error); return; }
+    errBox.classList.remove('show');
+    var total = res.total, ms = res.matches;
+    if (!total) setChip('无匹配', '');
+    else setChip(total + ' 处匹配' + (res.truncated ? '+' : ''), 'hot');
+
+    var raw = txt.value;
+    var text = raw.length > TEXT_CAP ? raw.slice(0, TEXT_CAP) : raw;
+    renderHl(text, ms);
+    renderList(ms, total);
+
+    var notes = [];
+    if (!flagState.g && total > 1) notes.push('未开启 g，仅取第一处');
+    if (total > LIST_CAP) notes.push('仅列出前 ' + LIST_CAP + ' 条');
+    if (ms.length >= STORE_CAP) notes.push('明细仅保存前 ' + STORE_CAP + ' 处');
+    if (res.truncated) notes.push('匹配过多已截断');
+    listMeta.textContent = notes.join(' · ');
+  }
+
+  function updateTxtMeta() {
+    var n = txt.value.length;
+    txtMeta.textContent = n ? (n + ' 字符' + (n > TEXT_CAP ? ' · 仅前 50 万参与匹配' : '')) : '';
+  }
+
+  /* ================= 高亮渲染 ================= */
+  function escText(s) {
+    return s.replace(/[&<>]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c];
+    });
+  }
+
+  function renderHl(text, ms) {
+    var vis = [];
+    for (var i = 0; i < ms.length && vis.length < HL_CAP; i++) {
+      if (ms[i].s.length > 0) vis.push(ms[i]);
+    }
+    if (!vis.length) { hl.textContent = text; hlSyncScroll(); return; }
+    var parts = [], pos = 0;
+    for (i = 0; i < vis.length; i++) {
+      var m = vis[i];
+      if (m.i > pos) parts.push(escText(text.slice(pos, m.i)));
+      parts.push('<span class="m">' + nestHtml(text, m, 1) + '</span>');
+      pos = m.i + m.s.length;
+    }
+    if (pos < text.length) parts.push(escText(text.slice(pos)));
+    hl.innerHTML = parts.join('');
+    hlSyncScroll();
+  }
+
+  /* 捕获组按嵌套关系包 span：括号天然嵌套，排序后逐层取子区间 */
+  function nestHtml(text, m, depth) {
+    var end = m.i + m.s.length;
+    var rs = [];
+    for (var i = 0; i < m.gs.length; i++) {
+      var g = m.gs[i];
+      if (g.s >= 0 && g.e > g.s && g.s >= m.i && g.e <= end) rs.push({ s: g.s, e: g.e, n: g.n });
+    }
+    rs.sort(function (a, b) { return a.s - b.s || b.e - a.e; });
+    return nest(text, rs, m.i, end, depth);
+  }
+
+  function nest(text, rs, from, to, depth) {
+    var out = '', p = from, i = 0;
+    while (i < rs.length) {
+      var r = rs[i];
+      if (r.s < p || r.e > to) { i++; continue; }
+      var j = i + 1;
+      while (j < rs.length && rs[j].s >= r.s && rs[j].e <= r.e) j++;
+      if (r.s > p) out += escText(text.slice(p, r.s));
+      out += '<span class="g gd' + Math.min(depth, 4) + '" title="第 ' + r.n + ' 组">' +
+        nest(text, rs.slice(i + 1, j), r.s, r.e, depth + 1) + '</span>';
+      p = r.e;
+      i = j;
+    }
+    if (p < to) out += escText(text.slice(p, to));
+    return out;
+  }
+
+  /* ================= 结果列表 ================= */
+  function renderList(ms, total) {
+    var rows = [], shown = 0;
+    for (var i = 0; i < ms.length && shown < LIST_CAP; i++) {
+      var m = ms[i];
+      if (!m.s.length) continue;
+      var gs = '';
+      for (var k = 0; k < m.gs.length; k++) {
+        var g = m.gs[k];
+        var v = g.v.length > 80 ? g.v.slice(0, 80) + '…' : g.v;
+        gs += '<span><b>g' + g.n + '</b>' + escText(v) + '</span>';
+      }
+      var sShow = m.s.length > 120 ? m.s.slice(0, 120) + '…' : m.s;
+      rows.push('<div class="mi" role="listitem" tabindex="0" data-k="' + shown + '">' +
+        '<div class="mi-top"><span class="mi-n">' + (shown + 1) + '</span>' +
+        '<span class="mi-s">' + escText(sShow) + '</span></div>' +
+        (gs ? '<div class="mi-g">' + gs + '</div>' : '') +
+        '</div>');
+      shown++;
+    }
+    if (rows.length) mlist.innerHTML = rows.join('');
+    else if (total) mlist.innerHTML = '<div class="empty">共 ' + total + ' 处匹配，均为零宽（空）匹配</div>';
+    else mlist.innerHTML = '<div class="empty">无匹配</div>';
+  }
+
+  function locate(mi) {
+    var k = +mi.getAttribute('data-k');
+    var el = hl.querySelectorAll('.m')[k];
+    if (!el) return;
+    txt.scrollTop = Math.max(0, el.offsetTop - txt.clientHeight / 3);
+    hlSyncScroll();
+    el.classList.add('flash');
+    setTimeout(function () { el.classList.remove('flash'); }, 1100);
+  }
+
+  /* ================= 编辑器滚动同步 ================= */
+  function hlSyncScroll() {
+    hl.scrollTop = txt.scrollTop;
+    hl.scrollLeft = txt.scrollLeft;
+  }
+  txt.addEventListener('scroll', hlSyncScroll);
+
+  /* ================= 输入区构建与事件 ================= */
+  FLAG_DEFS.forEach(function (fd) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'flag' + (flagState[fd.f] ? ' on' : '');
+    b.innerHTML = '<b>' + fd.f + '</b><i>' + fd.label + '</i>';
+    b.addEventListener('click', function () {
+      flagState[fd.f] = !flagState[fd.f];
+      b.classList.toggle('on', flagState[fd.f]);
+      run();
+    });
+    flagsBox.appendChild(b);
+  });
+
+  QUICK.forEach(function (q) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'qi';
+    b.textContent = q.label;
+    b.title = q.re;
+    b.addEventListener('click', function () {
+      var st = pat.selectionStart, en = pat.selectionEnd;
+      if (st == null) { st = en = pat.value.length; }
+      pat.value = pat.value.slice(0, st) + q.re + pat.value.slice(en);
+      pat.selectionStart = pat.selectionEnd = st + q.re.length;
+      pat.focus();
+      run();
+    });
+    chipsBox.appendChild(b);
+  });
+
+  pat.addEventListener('input', schedule);
+  txt.addEventListener('input', schedule);
+
+  mlist.addEventListener('click', function (e) {
+    var mi = e.target && e.target.closest('.mi');
+    if (mi) locate(mi);
+  });
+  mlist.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var mi = e.target && e.target.closest('.mi');
+    if (mi) { e.preventDefault(); locate(mi); }
+  });
+
+  btnSample.addEventListener('click', function () {
+    pat.value = SAMPLE_PAT;
+    txt.value = SAMPLE_TXT;
+    run();
+  });
+
+  btnClear.addEventListener('click', function () {
+    pat.value = '';
+    txt.value = '';
+    run();
+    pat.focus();
+  });
+
+  /* ================= 启动 ================= */
+  pat.value = SAMPLE_PAT;
+  txt.value = SAMPLE_TXT;
+  run();
+})();
+</script>
+</body>
+</html>
