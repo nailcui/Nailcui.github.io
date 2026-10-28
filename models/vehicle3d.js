@@ -401,6 +401,69 @@ Geo.prototype.tube = function (m, pts, r, seg) {
   this.merge(g2);
   return this;
 };
+/* 变截面放样：pts = [{x,y,w,h,r}] 沿局部平面中心线，w=横向(Z)宽、h=竖向(Y)高，
+   生成 8 点倒角截面连续条带——焊接箱型梁外观（大面平滑、棱边倒角）。 */
+Geo.prototype.loft = function (m, pts, opt) {
+  opt = opt || {};
+  var sides = 8;
+  var nm = n3(m);
+  var rings = [];
+  var segN = pts.length - 1;
+  for (var i = 0; i < pts.length; i++) {
+    var p = pts[i];
+    var a = pts[Math.max(i - 1, 0)], b = pts[Math.min(i + 1, pts.length - 1)];
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var L = Math.hypot(dx, dy) || 1;
+    dx /= L; dy /= L;
+    var ux = -dy, uy = dx; /* 截面 up 向量（2D） */
+    var r = p.r === undefined ? 0.24 : p.r;
+    var c = 1 - r;
+    var hw = p.h / 2, ww = p.w / 2;
+    var prof = [
+      { y: hw, z: 0, ny: 1, nz: 0 },
+      { y: hw * c, z: ww * c, ny: 0.707, nz: 0.707 },
+      { y: 0, z: ww, ny: 0, nz: 1 },
+      { y: -hw * c, z: ww * c, ny: -0.707, nz: 0.707 },
+      { y: -hw, z: 0, ny: -1, nz: 0 },
+      { y: -hw * c, z: -ww * c, ny: -0.707, nz: -0.707 },
+      { y: 0, z: -ww, ny: 0, nz: -1 },
+      { y: hw * c, z: -ww * c, ny: 0.707, nz: -0.707 }
+    ];
+    var ring = [];
+    for (var t = 0; t < sides; t++) {
+      var q = prof[t];
+      var n3x = ux * q.ny, n3y = uy * q.ny, n3z = q.nz;
+      ring.push(this.vert(m, nm, p.x + ux * q.y, p.y + uy * q.y, q.z, n3x, n3y, n3z, 0, 0));
+    }
+    rings.push(ring);
+  }
+  for (i = 0; i < segN; i++) {
+    for (var t2 = 0; t2 < sides; t2++) {
+      var s2 = (t2 + 1) % sides;
+      this.i.push(rings[i][t2], rings[i][s2], rings[i + 1][s2], rings[i][t2], rings[i + 1][s2], rings[i + 1][t2]);
+    }
+  }
+  /* 端盖 */
+  function cap(ring, sign) {
+    var a = pts[sign > 0 ? pts.length - 1 : 0];
+    var b2 = pts[sign > 0 ? pts.length - 2 : 1];
+    var dx2 = a.x - b2.x, dy2 = a.y - b2.y;
+    var L2 = Math.hypot(dx2, dy2) || 1;
+    var cx = L2 > 0.0001 ? dx2 / L2 : 1, cy = L2 > 0.0001 ? dy2 / L2 : 0;
+    var cIdx = this.vert(m, nm, a.x, a.y, 0, cx * sign, cy * sign, 0, 0, 0);
+    for (var t3 = 0; t3 < sides; t3++) {
+      var t4 = (t3 + 1) % sides;
+      if (sign > 0) this.i.push(cIdx, ring[t3], ring[t4]);
+      else this.i.push(cIdx, ring[t4], ring[t3]);
+    }
+  }
+  if (opt.caps !== false) {
+    cap.call(this, rings[0], -1);
+    cap.call(this, rings[pts.length - 1], 1);
+  }
+  return this;
+};
+
 Geo.prototype.merge = function (o) {
   var base = this.v;
   for (var i = 0; i < o.p.length; i++) { this.p.push(o.p[i]); this.n.push(o.n[i]); this.t.push(o.t[i]); }
@@ -521,7 +584,9 @@ function Mat(hex, spec, shin, opts) {
     emis: opts.emis ? lin(opts.emis).map(function (c) { return c * (opts.emisK || 1); }) : [0, 0, 0],
     alpha: opts.alpha === undefined ? 1 : opts.alpha,
     tex: opts.tex || null,
-    cut: opts.cut || 0
+    cut: opts.cut || 0,
+    metal: opts.metal === undefined ? 0.1 : opts.metal,  /* 金属度：环境反射占比 */
+    mud: opts.mud === undefined ? 0.12 : opts.mud        /* 泥污权重：低处溅泥 */
   };
 }
 function canvasTex(gl, cv, mipmap, clampWrap) {
@@ -535,6 +600,32 @@ function canvasTex(gl, cv, mipmap, clampWrap) {
   if (mipmap) gl.generateMipmap(gl.TEXTURE_2D);
   return t;
 }
+function makeStripeTex(gl) {
+  var cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  var c = cv.getContext('2d');
+  c.fillStyle = '#e8b40e';
+  c.fillRect(0, 0, 256, 64);
+  c.fillStyle = '#17181a';
+  c.save();
+  c.translate(-64, 0);
+  for (var i = 0; i < 12; i++) {
+    c.beginPath();
+    c.moveTo(i * 48, 64);
+    c.lineTo(i * 48 + 24, 64);
+    c.lineTo(i * 48 + 24 + 64, 0);
+    c.lineTo(i * 48 + 64, 0);
+    c.closePath();
+    c.fill();
+  }
+  c.restore();
+  for (i = 0; i < 130; i++) {
+    c.fillStyle = 'rgba(70,64,50,' + (Math.random() * 0.16).toFixed(3) + ')';
+    c.fillRect(Math.random() * 256, Math.random() * 64, 1 + Math.random() * 3, 1 + Math.random() * 2);
+  }
+  return canvasTex(gl, cv, false, true);
+}
+
 function makeLabelTex(gl, text, sub) {
   var cv = document.createElement('canvas');
   cv.width = 512; cv.height = 256;
@@ -677,7 +768,7 @@ function createApp(opts) {
   }
 
   var U_LIGHT = ['uProj','uView','uModel','uNrm','uLightVP'];
-  var U_MAT = ['uColor','uSpec','uShin','uEmis','uAlpha','uSunDir','uSunCol','uSkyCol','uGndCol','uCamPos','uFogCol','uFogDen','uShadow','uTexel','uShadowOn','uMap','uUseTex','uCut'];
+  var U_MAT = ['uColor','uSpec','uShin','uEmis','uAlpha','uSunDir','uSunCol','uSkyCol','uGndCol','uCamPos','uFogCol','uFogDen','uShadow','uTexel','uShadowOn','uMap','uUseTex','uCut','uMetal','uMud','uZenith','uHorizon','uMudCol'];
   var A_OBJ = ['aPos','aNor','aUV'];
 
   var VS_OBJ = [
@@ -740,23 +831,48 @@ function createApp(opts) {
     'uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uSkyCol; uniform vec3 uGndCol;',
     'uniform vec3 uCamPos; uniform vec3 uFogCol; uniform float uFogDen;',
     'uniform sampler2D uShadow; uniform float uTexel; uniform float uShadowOn;',
-    'uniform sampler2D uMap; uniform float uUseTex; uniform float uCut;'
+    'uniform sampler2D uMap; uniform float uUseTex; uniform float uCut;',
+    'uniform float uMetal; uniform float uMud;',
+    'uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uMudCol;'
   ].join('\n');
 
   var FS_LIGHT = FS_HEAD + '\n' + SHADOW_CHUNK + '\n' + [
+    'vec3 envAt(vec3 r){',
+    '  float up = clamp(r.y * 0.62 + 0.10, 0.0, 1.0);',
+    '  vec3 sky = mix(uHorizon, uZenith, pow(up, 0.8));',
+    '  vec3 gnd = mix(uHorizon * 0.40, uHorizon * 0.30, clamp(-r.y * 2.0, 0.0, 1.0));',
+    '  vec3 e = mix(gnd, sky, step(0.0, r.y));',
+    '  float sd = max(dot(r, uSunDir), 0.0);',
+    '  e += uSunCol * pow(sd, 48.0) * 1.35;',
+    '  return e;',
+    '}',
     'void main(){',
     '  vec4 texc = vec4(1.0); float alpha = uAlpha;',
     '  if (uUseTex > 0.5) { texc = texture2D(uMap, vUV); if (texc.a < uCut) discard; alpha *= texc.a; }',
     '  vec3 N = normalize(vN);',
-    '  vec3 albedo = uColor * texc.rgb;',
+    '  vec3 V = normalize(uCamPos - vW);',
     '  float ndl = dot(N, uSunDir);',
     '  float dif = max(ndl, 0.0);',
     '  float sh = shadowF(ndl);',
     '  vec3 hemi = mix(uGndCol, uSkyCol, N.y * 0.5 + 0.5);',
-    '  vec3 V = normalize(uCamPos - vW);',
+    '  /* 泥污：低处溅泥 + 细碎色斑 */',
+    '  float nz = fract(sin(dot(floor(vW.xz * 4.0) + floor(vec2(vW.y * 7.0)), vec2(127.1, 311.7))) * 43758.5);',
+    '  float mud = uMud * clamp((0.72 - vW.y) * 1.35, 0.0, 1.0) * (0.55 + 0.45 * nz);',
+    '  vec3 albedo = mix(uColor * texc.rgb, uMudCol, mud);',
+    '  /* 程序化环境反射 + 菲涅尔 */',
+    '  vec3 R = reflect(-V, N);',
+    '  vec3 env = envAt(R);',
+    '  float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);',
     '  vec3 H = normalize(uSunDir + V);',
     '  float sp = pow(max(dot(N, H), 0.0), uShin) * dif;',
-    '  vec3 col = albedo * (hemi + vec3(0.055)) + albedo * uSunCol * dif * sh + uSpec * uSunCol * sp * sh * 0.9 + uEmis;',
+    '  float metal = uMetal;',
+    '  float kd = 1.0 - metal * 0.72;',
+    '  vec3 col =',
+    '    albedo * kd * (hemi + vec3(0.045))',
+    '    + albedo * kd * uSunCol * dif * sh',
+    '    + env * (metal * (0.50 + 0.38 * dif * sh) + fres * 0.30) * (0.35 + 0.65 * metal + 0.35 * fres)',
+    '    + uSpec * uSunCol * sp * sh * 0.9',
+    '    + uEmis;',
     '  float dist = length(uCamPos - vW);',
     '  float fog = 1.0 - exp(-uFogDen * uFogDen * dist * dist);',
     '  col = mix(col, uFogCol, fog);',
@@ -1215,6 +1331,7 @@ function createApp(opts) {
   var FOG_COL = lin(0xd3dade);
   var ZEN_COL = lin(0x5a83b8);
   var HOR_COL = lin(0xd3dade);
+  var MUD_COL = lin(0x5c4c38);
   var FOG_DEN = 0.0105;
   var dirtCol = lin(opts.dirt || 0x6d5f49);
 
@@ -1235,6 +1352,11 @@ function createApp(opts) {
     gl.uniform1i(prog.u.uShadow, 0);
     gl.uniform1f(prog.u.uTexel, 1 / SHADOW_SIZE);
     gl.uniform1f(prog.u.uShadowOn, 1);
+    if (prog.u.uMetal) {
+      gl.uniform3fv(prog.u.uZenith, ZEN_COL);
+      gl.uniform3fv(prog.u.uHorizon, HOR_COL);
+      gl.uniform3fv(prog.u.uMudCol, MUD_COL);
+    }
   }
   function drawMat(prog, mesh, mat, model) {
     if (!mesh || !mat) return;
@@ -1246,6 +1368,10 @@ function createApp(opts) {
     gl.uniform1f(prog.u.uShin, mat.shin);
     gl.uniform3fv(prog.u.uEmis, mat.emis);
     gl.uniform1f(prog.u.uAlpha, mat.alpha);
+    if (prog.u.uMetal) {
+      gl.uniform1f(prog.u.uMetal, mat.metal === undefined ? 0.1 : mat.metal);
+      gl.uniform1f(prog.u.uMud, mat.mud === undefined ? 0.12 : mat.mud);
+    }
     if (mat.tex) {
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, mat.tex);
@@ -1348,7 +1474,6 @@ function createApp(opts) {
     gl.uniformMatrix4fv(pDepthBelt.u.uProj, false, proj);
     gl.uniformMatrix4fv(pDepthBelt.u.uView, false, view);
     gl.uniformMatrix4fv(pDepthBelt.u.uLightVP, false, lightVP);
-    gl.uniform3f(pDepthBelt.u.uBeltCfg, 1, 1, 1);
     if (sceneDyn) sceneDyn(pDepthBelt, true, true);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
@@ -1518,7 +1643,10 @@ function createApp(opts) {
     Mat: Mat,
     makeLabelTex: function (t, s) { return makeLabelTex(gl, t, s); },
     texLabel: texLabel,
+    makeStripeTex: function () { return makeStripeTex(gl); },
     camReset: camReset,
+    useProg: use,
+    setLightU: setLightU,
     setBtnOn: function (id, on) { if (btnEls[id]) btnEls[id].classList.toggle('on', !!on); },
     isDemoOn: function () { return demoOn; },
     /* 调试/测试：手动步进一帧 */
@@ -1615,15 +1743,52 @@ function buildBeltGeo(Lb, R, W, N) {
   }
   return { geo: g, total: total };
 }
+/* 动态软管：A→M→B 三段黑色橡胶管（每帧重算，随关节运动）。
+   makeTubeHelper(unitCyl, unitSph, scratchM) 返回 fn(drawOne, A, B, sag, r, side)
+   sag: 中点沿 -Y 下垂量；side: 水平侧偏。 */
+function makeTubeHelper(unitCyl, unitSph, scratchM) {
+  var mid = [0, 0, 0], d1v = [0, 0, 0], d2v = [0, 0, 0];
+  return function (drawOne, A, B, sag, r, side) {
+    mid[0] = (A[0] + B[0]) / 2 + (side || 0);
+    mid[1] = (A[1] + B[1]) / 2 - sag;
+    mid[2] = (A[2] + B[2]) / 2;
+    var dx1 = mid[0] - A[0], dy1 = mid[1] - A[1], dz1 = mid[2] - A[2];
+    var L1 = Math.hypot(dx1, dy1, dz1) || 1;
+    d1v[0] = dx1 / L1; d1v[1] = dy1 / L1; d1v[2] = dz1 / L1;
+    axisMat(A, d1v, r, L1, r, scratchM);
+    drawOne(unitCyl, 'tube', scratchM);
+    var dx2 = B[0] - mid[0], dy2 = B[1] - mid[1], dz2 = B[2] - mid[2];
+    var L2 = Math.hypot(dx2, dy2, dz2) || 1;
+    d2v[0] = dx2 / L2; d2v[1] = dy2 / L2; d2v[2] = dz2 / L2;
+    axisMat(mid, d2v, r, L2, r, scratchM);
+    drawOne(unitCyl, 'tube', scratchM);
+    var rc = r * 1.45;
+    axisMat(mid, d1v, rc, 0.025, rc, scratchM);
+    drawOne(unitSph, 'joint', scratchM); /* 弯头球 */
+    axisMat(A, d1v, rc, 0.035, rc, scratchM);
+    drawOne(unitSph, 'joint', scratchM); /* 端部接头 */
+  };
+}
+
 /* 履带绘制（pBelt 或 pDepthBelt） */
+var _beltMat = null;
 function drawBelt(app, mesh, model, travel, Lb, R, mat, depthPass) {
   var gl = app.gl;
   var prog = depthPass ? app.pDepthBelt : app.pBelt;
+  app.useProg(prog);
   gl.uniform1f(prog.u.uBelt, travel);
   gl.uniform3f(prog.u.uBeltCfg, Lb, R, 2 * Lb + 2 * PI * R);
-  bindMesh(prog, mesh);
-  gl.uniformMatrix4fv(prog.u.uModel, false, model);
-  gl.drawElements(gl.TRIANGLES, mesh.n, gl.UNSIGNED_SHORT, 0);
+  if (depthPass) {
+    bindMesh(prog, mesh);
+    gl.uniformMatrix4fv(prog.u.uModel, false, model);
+    gl.drawElements(gl.TRIANGLES, mesh.n, gl.UNSIGNED_SHORT, 0);
+  } else {
+    app.setLightU(prog);
+    if (!_beltMat) {
+      _beltMat = Mat(0x2a2a2e, [0.07, 0.07, 0.075], 10, { metal: 0.48, mud: 0.5 });
+    }
+    app.drawMat(prog, mesh, mat || _beltMat, model);
+  }
 }
 
 global.V3D = {
@@ -1636,6 +1801,8 @@ global.V3D = {
   Node: Node, lin: lin, Mat: Mat, canvasTex: canvasTex, makeLabelTex: makeLabelTex,
   createApp: createApp,
   makeCylHelper: makeCylHelper,
+  makeTubeHelper: makeTubeHelper,
+  loft: function (geo, m, pts, opt) { return geo.loft(m, pts, opt); },
   buildBeltGeo: buildBeltGeo,
   drawBelt: drawBelt
 };
