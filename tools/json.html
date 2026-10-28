@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0a1420">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#fafafa">
   <meta name="description" content="JSON 格式化 —— 校验、美化、压缩，语法高亮折叠树，纯本地处理。">
   <title>JSON 格式化 · Nailcui 工具箱</title>
   <link rel="stylesheet" href="./tools.css">
@@ -60,16 +60,16 @@
     }
     .jn-line, .jn-head, .jn-foot { white-space: nowrap; }
     .jn-head { cursor: pointer; border-radius: 6px; }
-    .jn-head:hover { background: rgba(77, 240, 216, 0.07); }
+    .jn-head:hover { background: rgba(0, 0, 0, 0.045); }
     .jn-kids {
       margin-left: 10px;
       padding-left: 14px;
-      border-left: 1px dashed rgba(255, 255, 255, 0.12);
+      border-left: 1px dashed rgba(0, 0, 0, 0.14);
     }
     .j-arrow {
       display: inline-block;
       width: 0; height: 0;
-      border-left: 5px solid rgba(205, 232, 227, 0.55);
+      border-left: 5px solid rgba(20, 20, 20, 0.5);
       border-top: 4px solid transparent;
       border-bottom: 4px solid transparent;
       margin: 0 7px 1px 2px;
@@ -85,17 +85,17 @@
     .jn.closed > .jn-head .j-badge { display: inline-block; }
     .jn.closed > .jn-head .j-close-badge { display: inline; }
     .jn.closed > .jn-kids, .jn.closed > .jn-foot { display: none; }
-    .j-key { color: #7ee0d2; }
-    .v-str { color: #a8d98a; }
-    .v-num { color: #f0bd6f; }
-    .v-bool { color: #c792ea; }
-    .v-null { color: #8b949e; font-style: italic; }
-    .punc { color: rgba(205, 232, 227, 0.4); }
-    .j-brace { color: rgba(232, 246, 243, 0.82); }
+    .j-key { color: #0b7364; }
+    .v-str { color: #2f7d33; }
+    .v-num { color: #b26a00; }
+    .v-bool { color: #7d3ac1; }
+    .v-null { color: #999999; font-style: italic; }
+    .punc { color: rgba(20, 20, 20, 0.4); }
+    .j-brace { color: rgba(20, 20, 20, 0.85); }
     .j-badge {
       font-size: 10.5px;
       color: var(--ink-faint);
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(0, 0, 0, 0.05);
       border-radius: 999px;
       padding: 1px 8px;
       margin-left: 8px;
@@ -107,9 +107,9 @@
       margin: 18px 16px;
       padding: 14px 16px;
       border-radius: 12px;
-      border: 1px solid rgba(255, 123, 114, 0.4);
-      background: rgba(248, 81, 73, 0.1);
-      color: #ffb4ad;
+      border: 1px solid rgba(199, 67, 60, 0.35);
+      background: rgba(199, 67, 60, 0.06);
+      color: #a03a34;
       font-size: 13px;
       line-height: 1.9;
       font-family: var(--mono);
@@ -118,7 +118,7 @@
     .err-card b {
       display: block;
       margin-bottom: 4px;
-      color: #ff8b84;
+      color: #b0403a;
       font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
       letter-spacing: 0.08em;
     }
@@ -131,7 +131,7 @@
       margin-bottom: 10px;
       padding: 4px;
       border-radius: 999px;
-      background: var(--glass);
+      background: #efefef;
       border: 1px solid var(--hair);
     }
     .tabs button {
@@ -146,7 +146,7 @@
       cursor: pointer;
       letter-spacing: 0.1em;
     }
-    .tabs button.on { background: rgba(77, 240, 216, 0.16); color: var(--acc2); font-weight: 600; }
+    .tabs button.on { background: #141414; color: #ffffff; font-weight: 600; }
 
     @media (max-width: 760px) {
       .panes { grid-template-columns: 1fr; }

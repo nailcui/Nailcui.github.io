@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0a1420">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#fafafa">
   <meta name="description" content="文本对比 —— 左右两栏粘贴文本，逐行对比差异，类似 git diff，纯本地处理。">
   <title>文本对比 · Nailcui 工具箱</title>
   <link rel="stylesheet" href="./tools.css">
@@ -31,7 +31,7 @@
     }
     .diff-cols textarea::placeholder { color: var(--ink-faint); }
 
-    .stale-note { display: none; margin-top: 10px; font-size: 12px; color: #f0bd6f; letter-spacing: 0.06em; }
+    .stale-note { display: none; margin-top: 10px; font-size: 12px; color: #9a6700; letter-spacing: 0.06em; }
     .stale-note.show { display: block; }
 
     /* ---------- 结果 ---------- */
@@ -46,9 +46,9 @@
       letter-spacing: 0.1em;
     }
     .same-card {
-      border: 1px dashed rgba(77, 240, 216, 0.35);
+      border: 1px dashed rgba(12, 127, 110, 0.45);
       color: var(--acc2);
-      background: rgba(77, 240, 216, 0.05);
+      background: rgba(12, 127, 110, 0.04);
     }
     .hint-card { border: 1px dashed var(--hair); color: var(--ink-faint); }
 
@@ -64,9 +64,9 @@
       color: var(--ink-dim);
       font-family: var(--mono);
     }
-    .chip.ins { color: #7ee2a0; border-color: rgba(63, 185, 80, 0.4); background: rgba(63, 185, 80, 0.08); }
-    .chip.del { color: #ff9e94; border-color: rgba(248, 81, 73, 0.4); background: rgba(248, 81, 73, 0.08); }
-    .chip.mod { color: #f0bd6f; border-color: rgba(240, 189, 111, 0.4); background: rgba(240, 189, 111, 0.08); }
+    .chip.ins { color: #1a7f37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.06); }
+    .chip.del { color: #cf222e; border-color: rgba(207, 34, 46, 0.35); background: rgba(207, 34, 46, 0.05); }
+    .chip.mod { color: #9a6700; border-color: rgba(154, 103, 0, 0.4); background: rgba(154, 103, 0, 0.06); }
 
     .diff-scroll { margin-top: 12px; border: 1px solid var(--hair); border-radius: 14px; overflow: hidden; }
     .diff-table {
@@ -83,7 +83,7 @@
       position: sticky;
       top: 0;
       z-index: 2;
-      background: var(--panel);
+      background: var(--panel-2);
       border-bottom: 1px solid var(--hair);
       font-size: 11px;
       letter-spacing: 0.16em;
@@ -92,30 +92,30 @@
     }
     .d-head span { padding: 8px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .d-head .side-r { border-left: 1px solid var(--hair); }
-    .d-row { border-top: 1px solid rgba(255, 255, 255, 0.035); }
-    .d-row.chunk { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+    .d-row { border-top: 1px solid rgba(0, 0, 0, 0.05); }
+    .d-row.chunk { border-top: 1px solid rgba(0, 0, 0, 0.14); }
     .d-ln {
       text-align: right;
       padding: 0 8px;
       color: var(--ink-faint);
-      background: rgba(255, 255, 255, 0.028);
+      background: rgba(0, 0, 0, 0.028);
       border-right: 1px solid var(--hair);
       user-select: none;
       -webkit-user-select: none;
     }
-    .d-ln.del-n { color: rgba(255, 158, 148, 0.7); background: rgba(248, 81, 73, 0.08); }
-    .d-ln.ins-n { color: rgba(126, 226, 160, 0.75); background: rgba(63, 185, 80, 0.07); }
+    .d-ln.del-n { color: rgba(207, 34, 46, 0.85); background: rgba(207, 34, 46, 0.07); }
+    .d-ln.ins-n { color: rgba(26, 127, 55, 0.9); background: rgba(26, 127, 55, 0.07); }
     .d-code { padding: 0 12px; white-space: pre-wrap; word-break: break-all; min-width: 0; min-height: 1.7em; }
     .d-code.side-r { border-left: 1px solid var(--hair); }
     .d-code.blank {
-      background-image: repeating-linear-gradient(-45deg, transparent 0 7px, rgba(255, 255, 255, 0.025) 7px 14px);
+      background-image: repeating-linear-gradient(-45deg, transparent 0 7px, rgba(0, 0, 0, 0.028) 7px 14px);
     }
-    .row-del .d-code.side-l { background: rgba(248, 81, 73, 0.14); }
-    .row-ins .d-code.side-r { background: rgba(63, 185, 80, 0.13); }
-    .row-mod .d-code.side-l { background: rgba(248, 81, 73, 0.09); }
-    .row-mod .d-code.side-r { background: rgba(63, 185, 80, 0.08); }
-    .wm-del { background: rgba(248, 81, 73, 0.32); border-radius: 2px; }
-    .wm-ins { background: rgba(63, 185, 80, 0.3); border-radius: 2px; }
+    .row-del .d-code.side-l { background: rgba(207, 34, 46, 0.07); }
+    .row-ins .d-code.side-r { background: rgba(26, 127, 55, 0.07); }
+    .row-mod .d-code.side-l { background: rgba(207, 34, 46, 0.045); }
+    .row-mod .d-code.side-r { background: rgba(26, 127, 55, 0.045); }
+    .wm-del { background: rgba(207, 34, 46, 0.22); border-radius: 2px; }
+    .wm-ins { background: rgba(26, 127, 55, 0.22); border-radius: 2px; }
 
     /* ---------- 移动端 ---------- */
     @media (max-width: 760px) {

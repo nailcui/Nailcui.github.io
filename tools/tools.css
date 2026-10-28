@@ -1,24 +1,24 @@
 /* ============================================================
    tools.css — 在线工具共用样式（tools/ 下各工具页共享）
-   深色玻璃风格，与站点迷雾/行迹页保持一致；纯静态零依赖。
+   浅色简约风格，与首页「简约」样式（#fafafa 底、细线、黑白为主）一致；
+   纯静态零依赖。
    公共骨架：.page / .top / .back / .brand / .actions / .btn
    面板：.pane / .pane-head / .pane-meta / .mini-btn / .credit
    工具箱卡片：.cards / .card
    ============================================================ */
 
 :root {
-  --bg: #0a1420;
-  --panel: #0d1a29;
-  --panel-2: #10202f;
-  --ink: #e8f6f3;
-  --ink-dim: rgba(205, 232, 227, 0.6);
-  --ink-faint: rgba(205, 232, 227, 0.38);
-  --acc: #4df0d8;
-  --acc2: #8cf7e8;
-  --glass: rgba(10, 22, 34, 0.72);
-  --line: rgba(77, 240, 216, 0.3);
-  --hair: rgba(255, 255, 255, 0.1);
-  --danger: #ff7b72;
+  --bg: #fafafa;
+  --panel: #ffffff;
+  --panel-2: #f4f4f4;
+  --ink: #141414;
+  --ink-dim: #666666;
+  --ink-faint: #999999;
+  --acc: #0c7f6e;
+  --acc2: #0a6a5c;
+  --line: rgba(12, 127, 110, 0.4);
+  --hair: #e4e4e4;
+  --danger: #c7433c;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
@@ -27,9 +27,7 @@
 html { -webkit-text-size-adjust: 100%; }
 
 body {
-  background:
-    radial-gradient(1100px 700px at 50% -10%, #0e1c2b 0%, rgba(0, 0, 0, 0) 62%),
-    var(--bg);
+  background: var(--bg);
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -71,17 +69,15 @@ button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visi
   height: 32px;
   padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: var(--glass);
+  border: 1px solid #dcdcdc;
+  background: var(--panel);
   color: var(--ink);
   text-decoration: none;
   font-size: 13px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   transition: border-color 0.25s, color 0.25s;
   white-space: nowrap;
 }
-.back:hover { border-color: var(--line); color: var(--acc2); }
+.back:hover { border-color: #141414; }
 
 .brand h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.3em; }
 .brand p { font-size: 11px; color: var(--ink-dim); margin-top: 3px; letter-spacing: 0.12em; }
@@ -102,29 +98,27 @@ button:focus-visible, a:focus-visible, select:focus-visible, textarea:focus-visi
   height: 32px;
   padding: 0 14px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: var(--glass);
+  border: 1px solid #dcdcdc;
+  background: var(--panel);
   color: var(--ink);
   font-size: 13px;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   transition: border-color 0.25s, color 0.25s, background 0.25s, box-shadow 0.25s;
   white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
 }
-.btn:hover { border-color: var(--line); color: var(--acc2); }
+.btn:hover { border-color: #141414; }
 .btn:active { transform: translateY(1px); }
 .btn.primary {
-  background: rgba(77, 240, 216, 0.14);
-  border-color: var(--line);
-  color: var(--acc2);
+  background: #141414;
+  border-color: #141414;
+  color: #ffffff;
   font-weight: 600;
 }
-.btn.primary:hover { background: rgba(77, 240, 216, 0.24); box-shadow: 0 0 18px rgba(77, 240, 216, 0.18); }
+.btn.primary:hover { background: #000000; }
 .btn.on {
-  background: rgba(77, 240, 216, 0.16);
+  background: rgba(12, 127, 110, 0.08);
   border-color: var(--line);
   color: var(--acc2);
 }
@@ -146,17 +140,15 @@ select.btn option { background: var(--panel); color: var(--ink); }
   align-items: flex-start;
   padding: 18px;
   border-radius: 16px;
-  background: var(--glass);
+  background: var(--panel);
   border: 1px solid var(--hair);
   text-decoration: none;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
 }
 .card:hover {
-  border-color: var(--line);
+  border-color: #c9c9c9;
   transform: translateY(-2px);
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35), 0 0 22px rgba(77, 240, 216, 0.08);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.07);
 }
 .card-ico {
   flex: none;
@@ -169,9 +161,9 @@ select.btn option { background: var(--panel); color: var(--ink); }
   font-family: var(--mono);
   font-size: 18px;
   font-weight: 700;
-  color: var(--acc2);
-  background: rgba(77, 240, 216, 0.1);
-  border: 1px solid rgba(77, 240, 216, 0.22);
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid #e8e8e8;
 }
 .card-body { flex: 1; min-width: 0; }
 .card-body h2 { font-size: 15.5px; font-weight: 600; letter-spacing: 0.06em; }
@@ -186,7 +178,7 @@ select.btn option { background: var(--panel); color: var(--ink); }
   letter-spacing: 0.04em;
 }
 .card-go { margin-left: auto; align-self: center; color: var(--ink-faint); font-size: 15px; }
-.card:hover .card-go { color: var(--acc2); }
+.card:hover .card-go { color: var(--ink); }
 
 .card.ghost {
   border-style: dashed;
@@ -208,7 +200,7 @@ select.btn option { background: var(--panel); color: var(--ink); }
   min-height: 0;
   border-radius: 14px;
   border: 1px solid var(--hair);
-  background: var(--glass);
+  background: var(--panel);
   overflow: hidden;
 }
 .pane-head {
@@ -218,6 +210,7 @@ select.btn option { background: var(--panel); color: var(--ink); }
   gap: 8px;
   padding: 9px 14px;
   border-bottom: 1px solid var(--hair);
+  background: var(--panel-2);
   font-size: 12px;
   letter-spacing: 0.14em;
   color: var(--ink-dim);
@@ -237,13 +230,13 @@ select.btn option { background: var(--panel); color: var(--ink); }
   transition: 0.2s;
   white-space: nowrap;
 }
-.mini-btn:hover { color: var(--acc2); border-color: var(--hair); }
+.mini-btn:hover { color: var(--ink); border-color: #cfcfcf; }
 
 .credit {
   margin-top: 12px;
   text-align: center;
   font-size: 10.5px;
-  color: rgba(210, 235, 230, 0.42);
+  color: #b3b3b3;
   letter-spacing: 0.08em;
 }
 

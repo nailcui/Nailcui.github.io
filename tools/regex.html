@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0a1420">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#fafafa">
   <meta name="description" content="正则测试器 —— 上方输入正则、下方粘贴文本，逐键实时高亮匹配与捕获组，纯本地处理。">
   <title>正则测试器 · Nailcui 工具箱</title>
   <link rel="stylesheet" href="./tools.css">
@@ -64,8 +64,8 @@
     }
     .flag b { font-weight: 700; }
     .flag i { font-style: normal; font-size: 10.5px; letter-spacing: 0.05em; opacity: 0.85; }
-    .flag:hover { color: var(--ink-dim); border-color: rgba(255, 255, 255, 0.2); }
-    .flag.on { color: var(--acc2); border-color: var(--line); background: rgba(77, 240, 216, 0.1); }
+    .flag:hover { color: var(--ink-dim); border-color: rgba(0, 0, 0, 0.24); }
+    .flag.on { color: var(--acc2); border-color: var(--line); background: rgba(12, 127, 110, 0.08); }
     .flag.on b { color: var(--acc); }
 
     .rx-chips {
@@ -88,16 +88,16 @@
       cursor: pointer;
       transition: 0.2s;
     }
-    .qi:hover { color: var(--acc2); border-color: var(--line); background: rgba(77, 240, 216, 0.06); }
+    .qi:hover { color: var(--acc2); border-color: var(--line); background: rgba(12, 127, 110, 0.06); }
 
     .rx-err {
       display: none;
       margin: 0 16px 13px;
       padding: 8px 12px;
       border-radius: 10px;
-      border: 1px solid rgba(255, 123, 114, 0.4);
-      background: rgba(248, 81, 73, 0.08);
-      color: #ff9e94;
+      border: 1px solid rgba(199, 67, 60, 0.35);
+      background: rgba(199, 67, 60, 0.06);
+      color: #b0403a;
       font-size: 12.5px;
       line-height: 1.6;
       word-break: break-all;
@@ -127,8 +127,8 @@
       font-family: var(--mono);
       white-space: nowrap;
     }
-    .chip.hot { color: #f0bd6f; border-color: rgba(240, 189, 111, 0.4); background: rgba(240, 189, 111, 0.08); }
-    .chip.bad { color: #ff9e94; border-color: rgba(248, 81, 73, 0.4); background: rgba(248, 81, 73, 0.08); }
+    .chip.hot { color: #9a6700; border-color: rgba(154, 103, 0, 0.4); background: rgba(154, 103, 0, 0.06); }
+    .chip.bad { color: #cf222e; border-color: rgba(207, 34, 46, 0.35); background: rgba(207, 34, 46, 0.05); }
     .pane-head .grow { gap: 8px; }
 
     /* 文本编辑区：高亮层在下、透明 textarea 在上，两层逐字对齐 */
@@ -161,17 +161,17 @@
       z-index: 1;
     }
     #txt::placeholder { color: var(--ink-faint); }
-    #txt::selection { background: rgba(77, 240, 216, 0.25); }
+    #txt::selection { background: rgba(12, 127, 110, 0.22); }
 
-    .m { border-radius: 3px; background: rgba(240, 189, 111, 0.24); box-shadow: 0 0 0 1px rgba(240, 189, 111, 0.28); }
+    .m { border-radius: 3px; background: rgba(247, 181, 56, 0.38); box-shadow: 0 0 0 1px rgba(191, 133, 27, 0.45); }
     .g { border-radius: 2px; }
-    .g.gd1 { background: rgba(126, 226, 160, 0.3); }
-    .g.gd2 { background: rgba(140, 247, 232, 0.3); }
-    .g.gd3 { background: rgba(255, 158, 148, 0.3); }
-    .g.gd4 { background: rgba(197, 159, 255, 0.34); }
+    .g.gd1 { background: rgba(46, 160, 67, 0.26); }
+    .g.gd2 { background: rgba(13, 148, 136, 0.24); }
+    .g.gd3 { background: rgba(230, 100, 84, 0.24); }
+    .g.gd4 { background: rgba(137, 87, 229, 0.24); }
     .m.flash {
-      background: rgba(77, 240, 216, 0.5);
-      box-shadow: 0 0 0 2px rgba(77, 240, 216, 0.7), 0 0 18px rgba(77, 240, 216, 0.45);
+      background: rgba(12, 127, 110, 0.32);
+      box-shadow: 0 0 0 2px rgba(12, 127, 110, 0.6), 0 0 14px rgba(12, 127, 110, 0.35);
     }
 
     /* 匹配结果列表 */
@@ -192,7 +192,7 @@
       cursor: pointer;
       transition: border-color 0.2s, background 0.2s;
     }
-    .mi:hover, .mi:focus-visible { border-color: var(--line); background: rgba(77, 240, 216, 0.05); outline: none; }
+    .mi:hover, .mi:focus-visible { border-color: var(--line); background: rgba(12, 127, 110, 0.04); outline: none; }
     .mi-top { display: flex; gap: 8px; align-items: baseline; }
     .mi-n {
       flex: none;
@@ -518,7 +518,7 @@
     for (var i = 0; i < ms.length && vis.length < HL_CAP; i++) {
       if (ms[i].s.length > 0) vis.push(ms[i]);
     }
-    if (!vis.length) { hl.textContent = text; hlSyncScroll(); return; }
+    if (!vis.length) { hl.textContent = text; hlSyncGutter(); hlSyncScroll(); return; }
     var parts = [], pos = 0;
     for (i = 0; i < vis.length; i++) {
       var m = vis[i];
@@ -528,6 +528,7 @@
     }
     if (pos < text.length) parts.push(escText(text.slice(pos)));
     hl.innerHTML = parts.join('');
+    hlSyncGutter();
     hlSyncScroll();
   }
 
@@ -596,11 +597,18 @@
   }
 
   /* ================= 编辑器滚动同步 ================= */
+  /* 经典滚动条占宽时 textarea 内容区变窄，高亮层按实测占宽补偿右内边距，保证两层换行一致 */
+  function hlSyncGutter() {
+    var gap = txt.offsetWidth - txt.clientWidth;
+    var target = 16 + (gap > 0 ? gap : 0) + 'px';
+    if (hl.style.paddingRight !== target) hl.style.paddingRight = target;
+  }
   function hlSyncScroll() {
     hl.scrollTop = txt.scrollTop;
     hl.scrollLeft = txt.scrollLeft;
   }
   txt.addEventListener('scroll', hlSyncScroll);
+  window.addEventListener('resize', hlSyncGutter);
 
   /* ================= 输入区构建与事件 ================= */
   FLAG_DEFS.forEach(function (fd) {
