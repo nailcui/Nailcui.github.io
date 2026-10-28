@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0e12">
+<meta name="description" content="3D 自卸卡车 —— 矿用重型自卸卡车，车厢举升卸料，手写 WebGL 渲染，零外部资源。">
+<title>3D 自卸卡车 · Nailcui</title>
+<link rel="stylesheet" href="./vehicle.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<script src="./vehicle3d.js"></script>
+<script>
+(function () {
+'use strict';
+var V = V3D, PI = V.PI, rad = V.rad, clamp = V.clamp, lerp = V.lerp;
+var T = V.T, S = V.S, RX = V.RX, RY = V.RY, RZ = V.RZ, m4chain = V.m4chain, m4mul = V.m4mul, m4ident = V.m4ident, pt = V.pt;
+
+/* ---------------- 演示状态 ---------------- */
+var demo = { on: false, i: 0, t: 0, done: 0, steps: [], loopFrom: 1 };
+
+var app = V3D.createApp({
+  title: '3D 自卸卡车',
+  badge: 'MT440',
+  badgeSub: 'MINING DUMP TRUCK',
+  hint: '拖拽旋转 · 滚轮缩放 · WASD 驾驶 · R/F 举升卸料',
+  buttons: [
+    { id: 'demo', label: '自动演示', onClick: function () { demo.on ? stopDemo() : startDemo(); } },
+    { id: 'follow', label: '跟随镜头' },
+    { id: 'reset', label: '重置', onClick: function () { resetAll(); } },
+    { id: 'help', label: '操作说明', onClick: function () { toggleHelp(); } }
+  ],
+  followBtn: true,
+  keys: [
+    ['<b>W</b><b>S</b> 行驶', '<b>A</b><b>D</b> 转向', '<b>空格</b> 停止'],
+    ['<b>R</b><b>F</b> 举升/落斗', '<b>⏎</b> 演示', ''],
+    ['<b>C</b> 跟随镜头', '<b>H</b> 帮助', '拖拽旋转 · 滚轮缩放']
+  ],
+  touchRight: [
+    ['l', '左转'], ['r', '右转'],
+    ['bu', '举斗'], ['bd', '落斗']
+  ],
+  help:
+    '<h2>操作说明</h2>' +
+    '<h4>行 驶</h4>' +
+    '<p><b>W</b>/<b>↑</b> 前进 · <b>S</b>/<b>↓</b> 后退 · <b>A</b>/<b>←</b>/<b>D</b>/<b>→</b> 转向（前桥）</p>' +
+    '<h4>工作装置</h4>' +
+    '<p><b>R</b>/<b>F</b> 车厢举升/下落（举到高位自动卸料）</p>' +
+    '<h4>其 他</h4>' +
+    '<p><b>空格</b> 全部停止 · <b>⏎</b> 自动卸料演示 · <b>C</b> 跟随镜头 · <b>H</b> 本说明</p>' +
+    '<h4>鼠 标</h4><p>拖拽旋转视角 · 滚轮缩放</p>' +
+    '<h4>触 屏</h4><p>单指拖拽旋转 · 双指缩放 · 底部按钮操控</p>',
+  cam: { yaw: 0.55 + PI - 1.05, pitch: 0.24, dist: 14.0 },
+  rocks: [[-7.0, 0.3, -5.5, 0.8, 3.1], [10.5, 0.18, 5.2, 0.45, 8.7], [13.5, 0.26, 8.0, 0.62, 15.2], [-3.0, 0.12, -9.2, 0.34, 21.9]],
+  cones: [[3.2, 5.0, 0.3], [4.1, 5.8, 1.9], [2.7, 6.2, 3.4]],
+  dirt: 0x6d5f49,
+  followTarget: function () { return [sim.x, sim.z]; },
+  shadowCenter: function () { return [sim.x, 1.6, sim.z]; },
+  shadowHalf: 11,
+  extraKeys: { KeyR: 'bu', KeyF: 'bd' },
+  manualExtra: ['bu', 'bd'],
+  onStop: function () {
+    stopDemo();
+    sim.v = 0; sim.tv = 0; sim.steer = 0; sim.steerT = 0;
+    for (var k in sim.JV) sim.JV[k] = 0;
+  },
+  onEnter: function () { demo.on ? stopDemo() : startDemo(); },
+  update: update
+});
+
+if (!app) return;
+var gl = app.gl;
+var key = app.key;
+
+/* ---------------- 材质 ---------------- */
+var M_YELLOW = V.Mat(0xe8a80c, [0.32,0.28,0.20], 26);
+var M_CHAR = V.Mat(0x242428, [0.10,0.10,0.11], 14);
+var M_STEEL = V.Mat(0x3a3b42, [0.45,0.46,0.50], 34);
+var M_CHROME = V.Mat(0xb8bcc6, [1.15,1.15,1.10], 100);
+var M_GLASS = V.Mat(0x24303e, [1.5,1.6,1.7], 130, { alpha: 0.42 });
+var M_RUBBER = V.Mat(0x121215, [0.05,0.05,0.05], 10);
+var M_STEEL_D = V.Mat(0x50525a, [0.5,0.5,0.55], 40);
+var M_GRAVEL = V.Mat(0x9d8d70, [0.04,0.04,0.04], 8);
+
+/* ---------------- 单位网格与液压缸 ---------------- */
+var gUnitCyl = new V.Geo(); gUnitCyl.cyl(V.m4ident(), 1, 1, 1, 14, true);
+var meshUnitCyl = app.makeMesh(gUnitCyl);
+var gUnitSph = new V.Geo(); gUnitSph.sphere(V.m4ident(), 1, 10, 8);
+var meshUnitSph = app.makeMesh(gUnitSph);
+var _cylM = V.m4ident();
+var drawCyl = V.makeCylHelper(meshUnitCyl, meshUnitSph, _cylM);
+function drawOneFactory(prog, depth) {
+  return function (mesh, kind, model) {
+    if (depth) {
+      V.bindMesh(prog, mesh);
+      app.gl.uniformMatrix4fv(prog.u.uModel, false, model);
+      app.gl.drawElements(app.gl.TRIANGLES, mesh.n, app.gl.UNSIGNED_SHORT, 0);
+    } else {
+      var mat = kind === 'rod' ? M_CHROME : (kind === 'joint' ? M_CHAR : M_STEEL);
+      app.drawMat(prog, mesh, mat, model);
+    }
+  };
+}
+
+/* ---------------- 机器状态 ---------------- */
+var SPAWN = { x: 0, z: 3.0, h: 0.5 };
+var sim = {
+  x: SPAWN.x, z: SPAWN.z, h: SPAWN.h,
+  v: 0, tv: 0,
+  steer: 0, steerT: 0,
+  tip: 0,                 /* 车厢举升角 0..48° */
+  tipT: 0,
+  JV: { tip: 0 },
+  loaded: true,
+  dist: 0
+};
+var VMAX = 4.2, L_WB = 4.3;
+var STEER_MAX = rad(32);
+var LIMIT = { tip: [0, rad(48)] };
+var RATE = { tip: rad(14) };
+
+/* ---------------- 节点树 ---------------- */
+var machine = new V.Node(null, V.m4ident());
+var body = new V.Node(machine, V.m4ident());   /* 车厢节点（绕尾部铰点旋转） */
+var steerL = new V.Node(machine, V.m4ident()); /* 前轮（转向视觉） */
+var steerR = new V.Node(machine, V.m4ident());
+
+/* 底盘 + 驾驶室 */
+(function () {
+  var gy = new V.Geo(), gd = new V.Geo();
+  /* 车架大梁 */
+  gd.box(T(-0.4, 0.92, 1.02), 3.3, 0.16, 0.10);
+  gd.box(T(-0.4, 0.92, -1.02), 3.3, 0.16, 0.10);
+  gd.box(T(-0.4, 0.92, 0), 3.3, 0.10, 1.9);
+  /* 驾驶室（前部） */
+  gy.rbox(T(2.55, 2.25, 0), 0.62, 0.62, 1.05, 0.10, 4);
+  gy.rbox(T(2.55, 2.95, 0), 0.55, 0.08, 1.00, 0.05, 3);
+  gd.box(T(2.55, 1.55, 0), 0.9, 0.10, 1.9);
+  var gg = new V.Geo();
+  gg.box(m4chain(T(3.14, 2.42, 0), RZ(rad(-8))), 0.03, 0.42, 0.46); /* 前风挡 */
+  gg.box(T(2.58, 2.42, 1.08), 0.52, 0.40, 0.015);
+  gg.box(T(2.58, 2.42, -1.08), 0.52, 0.40, 0.015);
+  /* 直立排气（驾驶室背后） */
+  gd.cyl(T(1.75, 2.60, 0.72), 0.075, 0.07, 1.75, 10, true);
+  gd.cyl(T(1.75, 3.52, 0.72), 0.09, 0.075, 0.10, 10, true);
+  /* 保险杠 / 格栅 */
+  gd.box(T(3.25, 1.30, 0), 0.14, 0.28, 1.85);
+  gy.box(T(3.05, 1.75, 0), 0.06, 0.34, 1.30);
+  /* 前桥与后桥 */
+  gd.cyl(m4chain(T(2.15, 0.95, 0), RX(PI/2)), 0.17, 0.17, 2.3, 10, true);
+  gd.cyl(m4chain(T(-1.55, 0.95, 0), RX(PI/2)), 0.20, 0.20, 2.3, 10, true);
+  gd.cyl(m4chain(T(-0.55, 0.95, 0), RX(PI/2)), 0.20, 0.20, 2.3, 10, true);
+  gd.box(T(2.15, 0.95, 0), 0.34, 0.30, 0.46);
+  gd.box(T(-1.05, 0.95, 0), 0.9, 0.30, 0.50);
+  /* 尾部铰支座 */
+  gd.box(T(-3.45, 1.35, 1.0), 0.10, 0.16, 0.14);
+  gd.box(T(-3.45, 1.35, -1.0), 0.10, 0.16, 0.14);
+  gd.box(T(-3.45, 1.35, 0), 0.12, 0.14, 1.8);
+  /* 铭牌（车门） */
+  var lab = new V.Geo();
+  var uL = 0, uR = 1;
+  var cx = 2.58, cy = 1.95, w = 0.30, h = 0.15;
+  var i00 = lab.vert(m4ident(), m4ident(), cx - w, cy - h, 1.10, 0, 0, 1, uL, 1);
+  var i10 = lab.vert(m4ident(), m4ident(), cx + w, cy - h, 1.10, 0, 0, 1, uR, 1);
+  var i11 = lab.vert(m4ident(), m4ident(), cx + w, cy + h, 1.10, 0, 0, 1, uR, 0);
+  var i01 = lab.vert(m4ident(), m4ident(), cx - w, cy + h, 1.10, 0, 0, 1, uL, 0);
+  lab.i.push(i00, i10, i11, i00, i11, i01);
+  var labMat = { color: [1,1,1], spec: [0.1,0.1,0.1], shin: 20, emis: [0,0,0], alpha: 1, tex: app.texLabel, cut: 0.45 };
+  machine.add(gl, gy, M_YELLOW);
+  machine.add(gl, gd, M_CHAR);
+  machine.addGlass(gl, gg, M_GLASS);
+  machine.addDecal(gl, lab, labMat);
+})();
+
+/* 车厢（局部：尾部铰点为原点，+X 朝车头方向） */
+var gravelMesh;
+(function () {
+  var gy = new V.Geo(), gd = new V.Geo();
+  var L = 3.4;               /* 车厢长（局部 x -0.4..3.0） */
+  gd.box(T(1.3, 0.10, 0), 1.7, 0.08, 2.30);                 /* 底板 */
+  [1, -1].forEach(function (sg) {
+    gy.box(T(1.3, 0.75, sg * 1.14), 1.7, 0.66, 0.07);       /* 侧板 */
+    gd.box(T(1.3, 0.72, sg * 1.06), 1.6, 0.07, 0.06);       /* 外肋 */
+    gd.box(T(1.3, 0.30, sg * 1.06), 1.6, 0.07, 0.06);
+  });
+  gy.box(T(2.95, 0.95, 0), 0.07, 0.90, 2.30);               /* 前墙 */
+  gy.box(T(2.95, 1.45, 0), 0.10, 0.10, 2.34);               /* 前墙檐 */
+  gd.box(T(-0.35, 0.72, 0), 0.06, 0.60, 2.26);              /* 尾门 */
+  gd.box(T(-0.42, 1.06, 0), 0.08, 0.08, 2.30);              /* 尾门横梁 */
+  /* 底部铰耳 */
+  gd.box(T(-0.10, -0.06, 1.0), 0.14, 0.12, 0.12);
+  gd.box(T(-0.10, -0.06, -1.0), 0.14, 0.12, 0.12);
+  gd.box(T(2.6, 0.05, 0), 0.20, 0.10, 0.5);                 /* 举升缸上支座 */
+  body.add(gl, gy, M_YELLOW);
+  body.add(gl, gd, M_CHAR);
+  /* 车厢内的料堆（装载状态可见） */
+  var gv = new V.Geo();
+  gv.mound(T(1.45, 0.55, 0), 1.55, 0.55, 4.2);
+  gravelMesh = app.makeMesh(gv);
+})();
+
+/* ---------------- 轮胎 ---------------- */
+var meshWheelBig, meshWheelSmall, meshHub;
+(function () {
+  function build(r, w) {
+    var gr = new V.Geo();
+    gr.cyl(RX(PI/2), r, r, w, 18, true);
+    var n = Math.round(r * 16);
+    for (var i = 0; i < n; i++) {
+      var a = i / n * 2 * PI;
+      gr.box(m4chain(T(Math.cos(a) * (r - 0.06), Math.sin(a) * (r - 0.06), 0), RZ(a)), r * 0.22, r * 0.09, w + 0.01);
+    }
+    return app.makeMesh(gr);
+  }
+  meshWheelBig = build(0.95, 0.62);
+  meshWheelSmall = build(0.95, 0.55);
+  var gh = new V.Geo();
+  gh.cyl(RX(PI/2), 0.44, 0.44, 0.66, 12, true);
+  meshHub = app.makeMesh(gh);
+})();
+
+/* ---------------- 演示 ---------------- */
+function stopDemo() { demo.on = false; app.setDemo(false); }
+function startDemo() {
+  demo.steps = [
+    { drive: 3.6, dur: 4.6 },
+    { j: { tip: rad(46) }, mt: 5, dump: true },
+    { j: { tip: rad(10) }, mt: 2.2 },
+    { j: { tip: 0 }, mt: 2 },
+    { drive: -4.0, dur: 5.0 },
+    { drive: 4.0, dur: 5.0 }
+  ];
+  demo.on = true; demo.i = 0; demo.t = 0; demo.done = 0;
+  app.setDemo(true);
+}
+function resetAll() {
+  stopDemo();
+  sim.x = SPAWN.x; sim.z = SPAWN.z; sim.h = SPAWN.h;
+  sim.v = 0; sim.tv = 0; sim.steer = 0; sim.steerT = 0;
+  sim.tip = 0; sim.tipT = 0; sim.loaded = true;
+  for (var k in sim.JV) sim.JV[k] = 0;
+  app.camReset();
+}
+function demoStepAdvance() {
+  demo.i++;
+  if (demo.i >= demo.steps.length) demo.i = demo.loopFrom;
+  demo.t = 0; demo.done = 0;
+}
+function updateDemo(dt) {
+  if (!demo.on) return;
+  var st = demo.steps[demo.i];
+  if (!st) { stopDemo(); return; }
+  demo.t += dt;
+  if (st.drive !== undefined) {
+    demo.done += sim.v * dt;
+    var rem = st.drive - demo.done;
+    var tmax = Math.max(0.4, st.dur - demo.t);
+    sim.tv = clamp(rem / tmax * 1.3, -VMAX, VMAX);
+    sim.steerT = 0;
+    if (Math.abs(rem) < 0.15 || demo.t > st.dur + 1.5) demoStepAdvance();
+  } else if (st.j) {
+    sim.tv = 0; sim.steerT = 0;
+    var all = true;
+    for (var k in st.j) {
+      var d = st.j[k] - sim.tip;
+      if (Math.abs(d) > 0.015) all = false;
+      var v = clamp(d / Math.max(dt, 1e-4), -RATE.tip, RATE.tip);
+      sim.JV.tip = lerp(sim.JV.tip, v * Math.min(1, Math.abs(d) / 0.14 + 0.1), Math.min(1, dt * 12));
+    }
+    if (st.dump) dumpFx(dt);
+    if (all || demo.t > st.mt) demoStepAdvance();
+  }
+}
+var dumpTimer = 0;
+function dumpFx(dt) {
+  if (sim.tip < rad(30) || !sim.loaded) return;
+  var tail = pt(body.world, -0.5, 0.6, 0, [0, 0, 0]);
+  dumpTimer -= dt;
+  if (dumpTimer <= 0) {
+    dumpTimer = 0.04;
+    for (var i = 0; i < 3; i++) {
+      app.spawnP(tail[0] + (Math.random()-0.5)*1.6, tail[1] + 0.4, tail[2] + (Math.random()-0.5)*1.6,
+        (Math.random()-0.5)*0.5, -0.6 - Math.random(), (Math.random()-0.5)*0.5,
+        0.15 + Math.random() * 0.2, 0.55 + Math.random() * 0.35, 0.35, 0.30, 0.22, 0.88, 7);
+    }
+  }
+}
+
+/* ---------------- 每帧更新 ---------------- */
+var exTimer = 0, dustTimer = 0, stampAcc = 0;
+var _wpA = [0,0,0], _wpB = [0,0,0];
+var TAIL = [0,0,0];
+function update(dt, t) {
+  /* 驾驶 */
+  if (!demo.on) {
+    sim.tv = ((key.f ? 1 : 0) - (key.b ? 1 : 0)) * VMAX;
+    sim.steerT = clamp(((key.l ? 1 : 0) - (key.r ? 1 : 0)) * STEER_MAX, -STEER_MAX, STEER_MAX);
+  }
+  var sr = Math.abs(sim.steerT) > Math.abs(sim.steer) ? 1.1 : 1.8;
+  sim.steer += clamp(sim.steerT - sim.steer, -sr * dt, sr * dt);
+  sim.v += clamp(sim.tv - sim.v, -2.6 * dt, 2.6 * dt);
+  var w = sim.v / L_WB * Math.tan(sim.steer);
+  sim.x += Math.cos(sim.h) * sim.v * dt;
+  sim.z += -Math.sin(sim.h) * sim.v * dt;
+  sim.h += w * dt;
+  sim.dist += sim.v * dt;
+  sim.x = clamp(sim.x, -120, 120);
+  sim.z = clamp(sim.z, -120, 120);
+
+  /* 车厢举升 */
+  if (!demo.on) {
+    var dir = (key.bu ? 1 : 0) - (key.bd ? 1 : 0);
+    sim.JV.tip = lerp(sim.JV.tip, dir * RATE.tip, Math.min(1, dt * 10));
+  }
+  sim.tip += sim.JV.tip * dt;
+  if (sim.tip < LIMIT.tip[0]) { sim.tip = LIMIT.tip[0]; if (sim.JV.tip < 0) sim.JV.tip = 0; }
+  if (sim.tip > LIMIT.tip[1]) { sim.tip = LIMIT.tip[1]; if (sim.JV.tip > 0) sim.JV.tip = 0; }
+
+  updateDemo(dt);
+
+  /* 卸料判定：高位且载货 */
+  if (sim.tip > rad(34) && sim.loaded) {
+    dumpFx(dt);
+    sim.loaded = false;
+    var tail = pt(body.world, -1.2, 0.4, 0, TAIL);
+    for (var b = 0; b < 5; b++) {
+      app.stampBlob(tail[0] - Math.cos(sim.h) * b * 0.9, tail[2] + Math.sin(sim.h) * b * 0.9, 1.1 + b * 0.18, 0.30, '96,84,64');
+    }
+  }
+
+  /* 节点姿态 */
+  m4mul(T(sim.x, 0, sim.z), RY(sim.h), machine.local);
+  machine.world = machine.local;
+  body.local = m4chain(T(-3.45, 1.42, 0), RZ(sim.tip), T(3.45, -0.47, 0));
+  steerL.local = T(2.15, 0.95, 1.15);
+  steerR.local = T(2.15, 0.95, -1.15);
+  body.update(machine.world);
+  steerL.update(machine.world);
+  steerR.update(machine.world);
+
+  app.setBlob(true, sim.x, sim.z, sim.h, 5.2, 2.7);
+  app.updateParts(dt);
+  app.uploadDecal(t);
+
+  /* 轮迹与尘土 */
+  if (Math.abs(sim.v) > 0.4) {
+    stampAcc += Math.abs(sim.v) * dt;
+    if (stampAcc > 0.24) {
+      stampAcc = 0;
+      var sxo = Math.sin(sim.h), czo = Math.cos(sim.h);
+      var rpx = sim.x - Math.cos(sim.h) * 1.05;
+      var rpz = sim.z + Math.sin(sim.h) * 1.05;
+      app.stampRect(rpx + sxo * 1.05, rpz + czo * 1.05, sim.h, 0.72, 0.5, 0.05);
+      app.stampRect(rpx - sxo * 1.05, rpz - czo * 1.05, sim.h, 0.72, 0.5, 0.05);
+      app.stampRect(sim.x + sxo * 1.05, sim.z + czo * 1.05, sim.h, 0.66, 0.46, 0.05);
+      app.stampRect(sim.x - sxo * 1.05, sim.z - czo * 1.05, sim.h, 0.66, 0.46, 0.05);
+    }
+    if (!app.reduced) {
+      dustTimer -= dt;
+      if (dustTimer <= 0) {
+        dustTimer = 0.08;
+        var bx = sim.x - Math.cos(sim.h) * 3.4;
+        var bz = sim.z + Math.sin(sim.h) * 3.4;
+        for (var s = 0; s < 2; s++) {
+          var ox = Math.sin(sim.h) * (s ? 1.05 : -1.05);
+          var oz = Math.cos(sim.h) * (s ? 1.05 : -1.05);
+          app.spawnP(bx + ox + (Math.random()-0.5)*0.6, 0.3, bz + oz + (Math.random()-0.5)*0.6,
+            -Math.cos(sim.h) * 0.9 + (Math.random()-0.5), 0.4 + Math.random() * 0.6, Math.sin(sim.h) * 0.9 + (Math.random()-0.5),
+            0.5 + Math.random() * 0.6, 0.8 + Math.random() * 0.4, 0.42, 0.37, 0.29, 0.2, 0.35);
+        }
+      }
+    }
+  }
+  /* 尾气（直立烟囱） */
+  if (!app.reduced) {
+    exTimer -= dt;
+    if (exTimer <= 0) {
+      exTimer = 0.16;
+      var sp = pt(machine.world, 1.75, 3.60, 0.72, [0,0,0]);
+      app.spawnP(sp[0], sp[1], sp[2],
+        (Math.random()-0.5) * 0.2, 0.9 + Math.random() * 0.4, (Math.random()-0.5) * 0.2,
+        0.20 + Math.random() * 0.1, 1.4 + Math.random() * 0.4, 0.32, 0.32, 0.33, 0.16, -0.12);
+    }
+  }
+}
+
+/* ---------------- 动态绘制（轮子 + 举升缸 + 料堆） ---------------- */
+function drawWheel(prog, mesh, mm, depth) {
+  if (depth) {
+    V.bindMesh(prog, mesh);
+    app.gl.uniformMatrix4fv(prog.u.uModel, false, mm);
+    app.gl.drawElements(app.gl.TRIANGLES, mesh.n, app.gl.UNSIGNED_SHORT, 0);
+    V.bindMesh(prog, meshHub);
+    app.gl.uniformMatrix4fv(prog.u.uModel, false, mm);
+    app.gl.drawElements(app.gl.TRIANGLES, meshHub.n, app.gl.UNSIGNED_SHORT, 0);
+  } else {
+    app.drawMat(prog, mesh, M_RUBBER, mm);
+    app.drawMat(prog, meshHub, M_STEEL_D, mm);
+  }
+}
+function dynDraw(prog, depth, isBeltProg) {
+  if (isBeltProg) return;
+  var d1 = drawOneFactory(prog, depth);
+  var roll = -sim.dist / 0.95;
+  /* 前轮（带转向角） */
+  [steerL, steerR].forEach(function (n) {
+    var mm = m4chain(n.world, RY(-sim.steer), RZ(roll));
+    drawWheel(prog, meshWheelSmall, mm, depth);
+  });
+  /* 后双联轮 */
+  [[-1.05], [-1.95]].forEach(function (ax) {
+    [1, -1].forEach(function (sg) {
+      var mm = m4chain(machine.world, T(ax[0], 0.95, sg * 1.05), RZ(roll));
+      drawWheel(prog, meshWheelBig, mm, depth);
+    });
+  });
+  /* 料堆 */
+  if (sim.loaded && !depth) {
+    app.drawMat(prog, gravelMesh, M_GRAVEL, body.world);
+  }
+  /* 举升缸：车架→车厢前底 */
+  pt(machine.world, 0.3, 0.85, 0, _wpA);
+  pt(body.world, 2.55, 0.10, 0, _wpB);
+  drawCyl(d1, _wpA, _wpB, 0.13, 0.075);
+}
+
+app.setScene(machine, dynDraw);
+app.start();
+window.__ld = { sim: sim, machine: machine, body: body };
+
+})();
+</script>
+</body>
+</html>

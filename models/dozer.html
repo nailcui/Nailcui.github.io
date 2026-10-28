@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0e12">
+<meta name="description" content="3D 推土机 —— 履带式推土机，直铲推土、松土器，手写 WebGL 渲染，零外部资源。">
+<title>3D 推土机 · Nailcui</title>
+<link rel="stylesheet" href="./vehicle.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<script src="./vehicle3d.js"></script>
+<script>
+(function () {
+'use strict';
+var V = V3D, PI = V.PI, rad = V.rad, clamp = V.clamp, lerp = V.lerp;
+var T = V.T, S = V.S, RX = V.RX, RY = V.RY, RZ = V.RZ, m4chain = V.m4chain, m4mul = V.m4mul, m4ident = V.m4ident, pt = V.pt;
+
+/* ---------------- 演示状态 ---------------- */
+var demo = { on: false, i: 0, t: 0, done: 0, steps: [], loopFrom: 1 };
+
+var app = V3D.createApp({
+  title: '3D 推土机',
+  badge: 'CD7H',
+  badgeSub: 'CRAWLER DOZER',
+  hint: '拖拽旋转 · 滚轮缩放 · WASD 驾驶 · R/F 铲刀 · Q/E 松土器',
+  buttons: [
+    { id: 'demo', label: '自动演示', onClick: function () { demo.on ? stopDemo() : startDemo(); } },
+    { id: 'follow', label: '跟随镜头' },
+    { id: 'reset', label: '重置', onClick: function () { resetAll(); } },
+    { id: 'help', label: '操作说明', onClick: function () { toggleHelp(); } }
+  ],
+  followBtn: true,
+  keys: [
+    ['<b>W</b><b>S</b> 行驶', '<b>A</b><b>D</b> 履带转向', '<b>空格</b> 停止'],
+    ['<b>R</b><b>F</b> 铲刀', '<b>Q</b><b>E</b> 松土器', '<b>⏎</b> 演示'],
+    ['<b>C</b> 跟随镜头', '<b>H</b> 帮助', '拖拽旋转 · 滚轮缩放']
+  ],
+  touchRight: [
+    ['l', '左转'], ['r', '右转'],
+    ['bu', '升刀'], ['bd', '降刀'],
+    ['qu', '松土器'], ['qd', '收松土器']
+  ],
+  help:
+    '<h2>操作说明</h2>' +
+    '<h4>行 驶</h4>' +
+    '<p><b>W</b>/<b>↑</b> 前进 · <b>S</b>/<b>↓</b> 后退 · <b>A</b>/<b>←</b>/<b>D</b>/<b>→</b> 履带差速转向（可原地转）</p>' +
+    '<h4>工作装置</h4>' +
+    '<p><b>R</b>/<b>F</b> 直铲升/降（贴地可推土）<br><b>Q</b>/<b>E</b> 松土器降/收</p>' +
+    '<h4>其 他</h4>' +
+    '<p><b>空格</b> 全部停止 · <b>⏎</b> 自动推土演示 · <b>C</b> 跟随镜头 · <b>H</b> 本说明</p>' +
+    '<h4>鼠 标</h4><p>拖拽旋转视角 · 滚轮缩放</p>' +
+    '<h4>触 屏</h4><p>单指拖拽旋转 · 双指缩放 · 底部按钮操控</p>',
+  cam: { yaw: 0.5 + PI - 1.1, pitch: 0.24, dist: 11.5 },
+  mound: { x: 8.6, z: -3.4, r: 2.6, h: 1.5 },
+  dirt: 0x6d5f49,
+  followTarget: function () { return [sim.x, sim.z]; },
+  shadowCenter: function () { return [sim.x, 1.2, sim.z]; },
+  shadowHalf: 10,
+  extraKeys: { KeyR: 'bu', KeyF: 'bd', KeyQ: 'qu', KeyE: 'qd' },
+  manualExtra: ['bu', 'bd', 'qu', 'qd'],
+  onStop: function () {
+    stopDemo();
+    sim.v = 0; sim.w = 0; sim.tv = 0; sim.tw = 0;
+    for (var k in sim.JV) sim.JV[k] = 0;
+  },
+  onEnter: function () { demo.on ? stopDemo() : startDemo(); },
+  update: update
+});
+
+if (!app) return;
+var gl = app.gl;
+var key = app.key;
+
+/* ---------------- 材质 ---------------- */
+var M_YELLOW = V.Mat(0xe8a80c, [0.32,0.28,0.20], 26);
+var M_CHAR = V.Mat(0x242428, [0.10,0.10,0.11], 14);
+var M_STEEL = V.Mat(0x3a3b42, [0.45,0.46,0.50], 34);
+var M_CHROME = V.Mat(0xb8bcc6, [1.15,1.15,1.10], 100);
+var M_GLASS = V.Mat(0x24303e, [1.5,1.6,1.7], 130, { alpha: 0.42 });
+var M_BELT = V.Mat(0x101014, [0.04,0.04,0.045], 8);
+var M_RUST = V.Mat(0x5a4636, [0.08,0.06,0.04], 12);
+var M_STEEL_D = V.Mat(0x50525a, [0.5,0.5,0.55], 40);
+
+/* ---------------- 单位网格与液压缸 ---------------- */
+var gUnitCyl = new V.Geo(); gUnitCyl.cyl(V.m4ident(), 1, 1, 1, 14, true);
+var meshUnitCyl = app.makeMesh(gUnitCyl);
+var gUnitSph = new V.Geo(); gUnitSph.sphere(V.m4ident(), 1, 10, 8);
+var meshUnitSph = app.makeMesh(gUnitSph);
+var _cylM = V.m4ident();
+var drawCyl = V.makeCylHelper(meshUnitCyl, meshUnitSph, _cylM);
+function drawOneFactory(prog, depth) {
+  return function (mesh, kind, model) {
+    if (depth) {
+      V.bindMesh(prog, mesh);
+      app.gl.uniformMatrix4fv(prog.u.uModel, false, model);
+      app.gl.drawElements(app.gl.TRIANGLES, mesh.n, app.gl.UNSIGNED_SHORT, 0);
+    } else {
+      var mat = kind === 'rod' ? M_CHROME : (kind === 'joint' ? M_CHAR : M_STEEL);
+      app.drawMat(prog, mesh, mat, model);
+    }
+  };
+}
+
+/* ---------------- 机器状态 ---------------- */
+var SPAWN = { x: 0, z: 3.0, h: 0.55 };
+var PARK = { blade: 0.92, ripper: 0.9 };
+var sim = {
+  x: SPAWN.x, z: SPAWN.z, h: SPAWN.h,
+  v: 0, w: 0, tv: 0, tw: 0,
+  distL: 0, distR: 0,
+  J: { blade: PARK.blade, ripper: PARK.ripper },
+  JV: { blade: 0, ripper: 0 }
+};
+var VMAX = 2.4, HALF = 1.05;
+var LIMIT = { blade: [0.16, 1.75], ripper: [0.12, 0.95] };
+var RATE = { blade: 0.45, ripper: 0.5 };
+
+/* ---------------- 履带参数与网格 ---------------- */
+var BELT = { Lb: 3.4, R: 0.60, W: 0.55, N: 46, cz: 1.05 };
+var beltMesh;
+(function () {
+  var b = V.buildBeltGeo(BELT.Lb, BELT.R, BELT.W, BELT.N);
+  BELT.total = b.total;
+  beltMesh = app.makeBeltMesh(b.geo);
+})();
+
+/* ---------------- 节点树 ---------------- */
+var machine = new V.Node(null, V.m4ident());
+var trackL = new V.Node(machine, T(0, 0.01, BELT.cz));
+var trackR = new V.Node(machine, T(0, 0.01, -BELT.cz));
+var blade = new V.Node(machine, V.m4ident());
+
+/* 底盘与车体 */
+(function () {
+  var gy = new V.Geo(), gd = new V.Geo(), gg = new V.Geo();
+  /* 履带架 */
+  [1, -1].forEach(function (sg) {
+    gd.box(T(0, 0.68, sg * BELT.cz), 1.95, 0.16, 0.14);
+    gd.rbox(T(-1.85, 0.82, sg * BELT.cz), 0.30, 0.20, 0.18, 0.05);
+  });
+  gd.box(T(0, 0.68, 0), 0.9, 0.13, 2.0); /* 中联 */
+  /* 底盘平台 */
+  gy.rbox(T(-0.25, 1.05, 0), 1.55, 0.18, 1.00, 0.07, 3);
+  /* 动力舱 */
+  gy.rbox(T(-1.45, 1.72, 0), 0.85, 0.52, 0.95, 0.10, 4);
+  gy.rbox(T(-1.45, 2.26, 0), 0.72, 0.06, 0.80, 0.04, 3);
+  [1, -1].forEach(function (sg) {
+    gd.box(T(-1.45, 1.55, sg * 0.97), 0.62, 0.28, 0.012);
+    for (var i = 0; i < 3; i++) gy.box(T(-1.45, 1.45 + i * 0.12, sg * 0.985), 0.46, 0.032, 0.015);
+  });
+  /* 排气管 */
+  gd.cyl(T(-1.15, 2.48, -0.45), 0.065, 0.06, 0.38, 10, true);
+  /* 驾驶室（开放式：四柱+顶） */
+  gy.box(T(0.42, 1.28, 0), 0.55, 0.06, 0.52);
+  gy.box(T(0.88, 1.72, 0.46), 0.05, 0.44, 0.05);
+  gy.box(T(0.88, 1.72, -0.46), 0.05, 0.44, 0.05);
+  gy.box(T(-0.04, 1.72, 0.46), 0.05, 0.44, 0.05);
+  gy.box(T(-0.04, 1.72, -0.46), 0.05, 0.44, 0.05);
+  gy.rbox(T(0.42, 2.20, 0), 0.50, 0.07, 0.52, 0.04, 3);
+  gg.box(T(0.46, 1.74, 0), 0.40, 0.34, 0.48);
+  /* 前部铲刀横梁支架 */
+  gd.box(T(1.9, 1.02, 1.5), 0.10, 0.10, 0.06);
+  gd.box(T(1.9, 1.02, -1.5), 0.10, 0.10, 0.06);
+  /* 尾部松土器支架 */
+  gd.box(T(-2.5, 1.05, 0), 0.12, 0.16, 1.10);
+  /* 铭牌 */
+  var lab = new V.Geo();
+  function labelQuad(z, flip) {
+    var uL = flip ? 1 : 0, uR = flip ? 0 : 1;
+    var cx = -1.45, cy = 1.72, w = 0.30, h = 0.15;
+    var i00 = lab.vert(V.m4ident(), V.m4ident(), cx - w, cy - h, z, 0, 0, 1, uL, 1);
+    var i10 = lab.vert(V.m4ident(), V.m4ident(), cx + w, cy - h, z, 0, 0, 1, uR, 1);
+    var i11 = lab.vert(V.m4ident(), V.m4ident(), cx + w, cy + h, z, 0, 0, 1, uR, 0);
+    var i01 = lab.vert(V.m4ident(), V.m4ident(), cx - w, cy + h, z, 0, 0, 1, uL, 0);
+    lab.i.push(i00, i10, i11, i00, i11, i01);
+  }
+  labelQuad(0.965, false);
+  labelQuad(-0.965, true);
+  var labMat = { color: [1,1,1], spec: [0.1,0.1,0.1], shin: 20, emis: [0,0,0], alpha: 1, tex: app.texLabel, cut: 0.45 };
+  machine.add(gl, gy, M_YELLOW);
+  machine.add(gl, gd, M_CHAR);
+  machine.addGlass(gl, gg, M_GLASS);
+  machine.addDecal(gl, lab, labMat);
+})();
+
+/* 履带轮组几何 */
+var meshSprocket, meshIdler, meshRoller;
+(function () {
+  var gs = new V.Geo();
+  gs.cyl(RX(PI/2), 0.48, 0.48, 0.34, 14, true);
+  for (var i = 0; i < 10; i++) {
+    var a = i / 10 * 2 * PI;
+    gs.box(m4chain(T(Math.cos(a) * 0.52, Math.sin(a) * 0.52, 0), RZ(a)), 0.07, 0.05, 0.26);
+  }
+  meshSprocket = app.makeMesh(gs);
+  var gi = new V.Geo();
+  gi.cyl(RX(PI/2), 0.54, 0.54, 0.34, 14, true);
+  gi.cyl(RX(PI/2), 0.22, 0.22, 0.36, 8, false);
+  meshIdler = app.makeMesh(gi);
+  var gr = new V.Geo();
+  gr.cyl(RX(PI/2), 0.28, 0.28, 0.30, 12, true);
+  gr.cyl(RX(PI/2), 0.13, 0.13, 0.32, 8, false);
+  meshRoller = app.makeMesh(gr);
+})();
+
+/* 直铲（局部原点在铲刀背面底部中心，+X 朝前） */
+(function () {
+  var gy = new V.Geo(), gd = new V.Geo();
+  gy.box(m4chain(T(0.42, 1.12, 0), RZ(rad(-14))), 0.07, 1.14, 3.56); /* 主刀面（后仰） */
+  gy.box(m4chain(T(0.02, 2.28, 0), RZ(rad(-40))), 0.30, 0.05, 3.56); /* 顶撇板 */
+  gy.box(m4chain(T(0.80, 0.30, 0), RZ(rad(-14))), 0.20, 0.06, 3.56); /* 底前唇 */
+  [1, -1].forEach(function (sg) {
+    gy.box(m4chain(T(0.42, 1.05, sg * 1.78), RZ(rad(-14))), 0.07, 1.10, 0.05); /* 端板 */
+  });
+  gd.box(T(0.52, 0.02, 0), 0.16, 0.15, 3.58); /* 底刃 */
+  gy.cyl(m4chain(T(0.34, 2.36, 0), RX(PI/2)), 0.05, 0.05, 3.56, 8, false); /* 顶横梁 */
+  /* 背面加强筋 */
+  [1, -1].forEach(function (sg) {
+    gd.box(T(0.30, 0.80, sg * 1.15), 0.10, 0.85, 0.09);
+    gd.box(T(0.22, 1.55, sg * 1.55), 0.10, 0.60, 0.09);
+  });
+  gd.box(T(0.18, 0.95, 1.42), 0.14, 0.14, 0.08); /* 油缸铰点 */
+  gd.box(T(0.18, 0.95, -1.42), 0.14, 0.14, 0.08);
+  blade.add(gl, gy, M_YELLOW);
+  blade.add(gl, gd, M_CHAR);
+})();
+
+/* 松土器（底盘尾部，ripper 节点绕后端升降） */
+var ripper = new V.Node(machine, V.m4ident());
+(function () {
+  var gd = new V.Geo();
+  gd.box(T(0, 0.10, 0), 0.10, 0.12, 1.90);
+  [-0.7, 0, 0.7].forEach(function (z) {
+    gd.box(m4chain(T(0.28, -0.12, z), RZ(rad(-38))), 0.10, 0.34, 0.09);
+    gd.box(m4chain(T(0.47, -0.38, z), RZ(rad(20))), 0.07, 0.26, 0.06);
+  });
+  ripper.add(gl, gd, M_STEEL);
+})();
+
+/* ---------------- 演示 ---------------- */
+function stopDemo() { demo.on = false; app.setDemo(false); }
+function startDemo() {
+  demo.steps = [
+    { j: { blade: 0.22 }, mt: 3.5 },
+    { drive: 3.4, dur: 4.6, push: true },
+    { j: { blade: 1.35 }, mt: 3 },
+    { drive: -4.4, dur: 5.0 },
+    { j: { blade: 0.22 }, mt: 3.5 }
+  ];
+  demo.on = true; demo.i = 0; demo.t = 0; demo.done = 0;
+  app.setDemo(true);
+}
+function resetAll() {
+  stopDemo();
+  sim.x = SPAWN.x; sim.z = SPAWN.z; sim.h = SPAWN.h;
+  sim.v = 0; sim.w = 0; sim.tv = 0; sim.tw = 0;
+  sim.distL = 0; sim.distR = 0;
+  sim.J.blade = PARK.blade; sim.J.ripper = PARK.ripper;
+  for (var k in sim.JV) sim.JV[k] = 0;
+  app.camReset();
+}
+function demoStepAdvance() {
+  demo.i++;
+  if (demo.i >= demo.steps.length) demo.i = demo.loopFrom;
+  demo.t = 0; demo.done = 0;
+}
+function updateDemo(dt) {
+  if (!demo.on) return;
+  var st = demo.steps[demo.i];
+  if (!st) { stopDemo(); return; }
+  demo.t += dt;
+  if (st.drive !== undefined) {
+    demo.done += sim.v * dt;
+    var rem = st.drive - demo.done;
+    var tmax = Math.max(0.4, st.dur - demo.t);
+    sim.tv = clamp(rem / tmax * 1.4, -VMAX, VMAX);
+    sim.tw = 0;
+    if (Math.abs(rem) < 0.12 || demo.t > st.dur + 1.5) demoStepAdvance();
+  } else if (st.j) {
+    sim.tv = 0; sim.tw = 0;
+    var all = true;
+    for (var k in st.j) {
+      var d = st.j[k] - sim.J[k];
+      if (Math.abs(d) > 0.015) all = false;
+      var v = clamp(d / Math.max(dt, 1e-4), -RATE[k], RATE[k]);
+      sim.JV[k] = lerp(sim.JV[k], v * Math.min(1, Math.abs(d) / 0.12 + 0.12), Math.min(1, dt * 14));
+    }
+    if (all || demo.t > st.mt) demoStepAdvance();
+  }
+}
+
+/* ---------------- 每帧更新 ---------------- */
+var exTimer = 0, dustTimer = 0, pushTimer = 0, stampAcc = 0;
+var _wpA = [0,0,0], _wpB = [0,0,0], _wpC = [0,0,0], _wpD = [0,0,0];
+var BLADE_TIP = [0,0,0];
+function update(dt, t) {
+  /* 驾驶（履带差速） */
+  if (!demo.on) {
+    sim.tv = ((key.f ? 1 : 0) - (key.b ? 1 : 0)) * VMAX;
+    sim.tw = ((key.r ? 1 : 0) - (key.l ? 1 : 0)) * 0.85;
+  }
+  sim.v += clamp(sim.tv - sim.v, -2.2 * dt, 2.2 * dt);
+  sim.w += clamp(sim.tw - sim.w, -3.0 * dt, 3.0 * dt);
+  sim.x += Math.cos(sim.h) * sim.v * dt;
+  sim.z += -Math.sin(sim.h) * sim.v * dt;
+  sim.h += sim.w * dt;
+  var sl = sim.v + sim.w * HALF, sr = sim.v - sim.w * HALF;
+  sim.distL += sl * dt;
+  sim.distR += sr * dt;
+  sim.x = clamp(sim.x, -120, 120);
+  sim.z = clamp(sim.z, -120, 120);
+
+  /* 工作装置 */
+  if (!demo.on) {
+    var dirs = {
+      blade: (key.bu ? 1 : 0) - (key.bd ? 1 : 0),
+      ripper: (key.qu ? 1 : 0) - (key.qd ? 1 : 0)
+    };
+    for (var j in dirs) {
+      sim.JV[j] = lerp(sim.JV[j], dirs[j] * RATE[j], Math.min(1, dt * 12));
+    }
+  }
+  for (j in sim.J) sim.J[j] += sim.JV[j] * dt;
+  for (j in LIMIT) {
+    if (sim.J[j] < LIMIT[j][0]) { sim.J[j] = LIMIT[j][0]; if (sim.JV[j] < 0) sim.JV[j] = 0; }
+    if (sim.J[j] > LIMIT[j][1]) { sim.J[j] = LIMIT[j][1]; if (sim.JV[j] > 0) sim.JV[j] = 0; }
+  }
+
+  updateDemo(dt);
+
+  /* 节点姿态 */
+  m4mul(T(sim.x, 0, sim.z), RY(sim.h), machine.local);
+  machine.world = machine.local;
+  trackL.local = T(0, 0.01, BELT.cz);
+  trackR.local = T(0, 0.01, -BELT.cz);
+  blade.local = T(2.55, sim.J.blade, 0);
+  ripper.local = T(-2.62, sim.J.ripper + 0.35, 0);
+  trackL.update(machine.world);
+  trackR.update(machine.world);
+  blade.update(machine.world);
+  ripper.update(machine.world);
+
+  app.setBlob(true, sim.x, sim.z, sim.h, 4.4, 2.6);
+  app.updateParts(dt);
+  app.uploadDecal(t);
+
+  /* 推土特效：铲刀贴地前行 */
+  pt(blade.world, 1.05, 0.10, 0, BLADE_TIP);
+  var cutting = sim.J.blade < 0.42 && Math.abs(sim.v) > 0.35;
+  if (cutting) {
+    stampAcc += Math.abs(sim.v) * dt;
+    if (stampAcc > 0.2) {
+      stampAcc = 0;
+      app.stampRect(BLADE_TIP[0], BLADE_TIP[2], sim.h, 3.4, 0.55, 0.045, 'rgba(120,102,74,0.045)');
+      var mh = app.moundH(BLADE_TIP[0], BLADE_TIP[2]);
+      if (mh > 0.05 && BLADE_TIP[1] < mh + 0.3) {
+        app.stampBlob(BLADE_TIP[0], BLADE_TIP[2], 0.8, 0.10);
+      }
+    }
+    if (!app.reduced) {
+      pushTimer -= dt;
+      if (pushTimer <= 0) {
+        pushTimer = 0.05;
+        for (var i = 0; i < 2; i++) {
+          var zz = (Math.random() - 0.5) * 3.2;
+          var off = pt(machine.world, 2.9, 0.1, zz, [0,0,0]);
+          app.spawnP(off[0], 0.15, off[2],
+            Math.cos(sim.h) * 1.2 + (Math.random()-0.5), 0.6 + Math.random() * 1.2, -Math.sin(sim.h) * 1.2 + (Math.random()-0.5),
+            0.15 + Math.random() * 0.22, 0.5 + Math.random() * 0.5, 0.30, 0.25, 0.18, 0.8, 4.5);
+        }
+      }
+    }
+  }
+  /* 行驶尘土 */
+  if (!app.reduced && (Math.abs(sim.v) > 0.6 || Math.abs(sim.w) > 0.45)) {
+    dustTimer -= dt;
+    if (dustTimer <= 0) {
+      dustTimer = 0.07;
+      for (var s = 0; s < 2; s++) {
+        var bx = sim.x - Math.cos(sim.h) * 1.9;
+        var bz = sim.z + Math.sin(sim.h) * 1.9;
+        var ox = Math.sin(sim.h) * (s ? BELT.cz : -BELT.cz);
+        var oz = Math.cos(sim.h) * (s ? BELT.cz : -BELT.cz);
+        app.spawnP(bx + ox + (Math.random()-0.5)*0.4, 0.1, bz + oz + (Math.random()-0.5)*0.4,
+          -Math.cos(sim.h) * 0.7 + (Math.random()-0.5), 0.35 + Math.random() * 0.5, Math.sin(sim.h) * 0.7 + (Math.random()-0.5),
+          0.4 + Math.random() * 0.5, 0.7 + Math.random() * 0.4, 0.42, 0.37, 0.29, 0.2, 0.4);
+      }
+    }
+  }
+  /* 尾气 */
+  if (!app.reduced) {
+    exTimer -= dt;
+    if (exTimer <= 0) {
+      exTimer = 0.15;
+      var sp = pt(machine.world, -1.15, 2.70, -0.45, [0,0,0]);
+      app.spawnP(sp[0], sp[1], sp[2],
+        (Math.random()-0.5) * 0.2, 0.85 + Math.random() * 0.4, (Math.random()-0.5) * 0.2,
+        0.20 + Math.random() * 0.1, 1.3 + Math.random() * 0.4, 0.32, 0.32, 0.33, 0.16, -0.12);
+    }
+  }
+}
+
+/* ---------------- 动态绘制（履带/轮组/铲刀油缸/推架） ---------------- */
+function drawWheelMesh(prog, mesh, mm, mat, depth) {
+  if (depth) {
+    V.bindMesh(prog, mesh);
+    app.gl.uniformMatrix4fv(prog.u.uModel, false, mm);
+    app.gl.drawElements(app.gl.TRIANGLES, mesh.n, app.gl.UNSIGNED_SHORT, 0);
+  } else {
+    app.drawMat(prog, mesh, mat, mm);
+  }
+}
+function dynDraw(prog, depth, isBeltProg) {
+  var d1 = drawOneFactory(prog, depth);
+  if (isBeltProg) {
+    [trackL, trackR].forEach(function (tn, i) {
+      V.drawBelt(app, beltMesh, tn.world, i === 0 ? sim.distL : sim.distR, BELT.Lb, BELT.R, null, true);
+    });
+    return;
+  }
+  /* 履带 */
+  [trackL, trackR].forEach(function (tn, i) {
+    V.drawBelt(app, beltMesh, tn.world, i === 0 ? sim.distL : sim.distR, BELT.Lb, BELT.R, M_BELT, false);
+  });
+  /* 轮组 */
+  [1, -1].forEach(function (sg) {
+    var travel = sg > 0 ? sim.distL : sim.distR;
+    var cz = sg * BELT.cz;
+    drawWheelMesh(prog, meshSprocket, m4chain(machine.world, T(-1.45, 0.60, cz), RZ(-travel / 0.54)), M_STEEL, depth);
+    drawWheelMesh(prog, meshIdler, m4chain(machine.world, T(1.45, 0.60, cz), RZ(-travel / 0.54)), M_CHAR, depth);
+    for (var i = 0; i < 5; i++) {
+      var x = -1.0 + i * 0.5;
+      drawWheelMesh(prog, meshRoller, m4chain(machine.world, T(x, 0.28, cz), RZ(-travel / 0.28)), M_CHAR, depth);
+    }
+  });
+  /* 铲刀升降缸（底盘→铲刀背）与顶推架（动态杆） */
+  [1, -1].forEach(function (sg) {
+    pt(machine.world, 2.0, 0.80, sg * 1.5, _wpA);
+    pt(blade.world, -0.30, 1.05, sg * 1.42, _wpB);
+    drawCyl(d1, _wpA, _wpB, 0.095, 0.058);
+    /* 顶推架：从履带架到铲刀背面 */
+    pt(machine.world, 1.55, 0.72, sg * 1.28, _wpC);
+    pt(blade.world, -0.35, 0.45, sg * 1.72, _wpD);
+    drawCyl(d1, _wpC, _wpD, 0.075, 0.075);
+  });
+}
+
+app.setScene(machine, dynDraw);
+app.start();
+window.__ld = { sim: sim, machine: machine, blade: blade, ripper: ripper };
+
+})();
+</script>
+</body>
+</html>

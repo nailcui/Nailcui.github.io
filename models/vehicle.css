@@ -1,0 +1,217 @@
+/* ============================================================
+   vehicle.css — models/ 工程车辆页共用样式（HUD/触屏/帮助/错误层）
+   与 excavator.html 内嵌样式同源；纯静态零依赖。
+   ============================================================ */
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0b0e12;
+    color: #e8eaed;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    overscroll-behavior: none;
+  }
+  #gl {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: grab;
+  }
+  #gl.drag { cursor: grabbing; }
+
+  .hud { position: fixed; z-index: 10; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: rgba(14, 17, 22, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: rgba(255, 255, 255, 0.88);
+    font-size: 13px;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+  a.pill { text-decoration: none; transition: border-color .25s, color .25s; }
+  a.pill:hover { border-color: rgba(255, 255, 255, 0.45); color: #fff; }
+
+  #hudTop {
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    left: calc(env(safe-area-inset-left, 0px) + 12px);
+    right: calc(env(safe-area-inset-right, 0px) + 12px);
+    display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;
+    pointer-events: none;
+  }
+  #hudTop > * { pointer-events: auto; }
+  .title-block { display: flex; flex-direction: column; gap: 6px; }
+  .title-block .pill b { font-weight: 600; letter-spacing: .06em; }
+  .title-block .pill i { font-style: normal; color: #f0b429; font-weight: 600; }
+  .title-sub { font-size: 10.5px; letter-spacing: .1em; color: rgba(255,255,255,.5); padding-left: 6px; }
+  #hudBtns { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .btnh {
+    appearance: none; cursor: pointer;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: rgba(14, 17, 22, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 13px; line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    transition: border-color .2s, color .2s, background .2s;
+    user-select: none; -webkit-user-select: none;
+  }
+  .btnh:hover { border-color: rgba(255, 255, 255, 0.45); color: #fff; }
+  .btnh:active { transform: translateY(1px); }
+  .btnh.on { background: rgba(240, 180, 41, 0.18); border-color: rgba(240, 180, 41, 0.65); color: #ffd97a; }
+
+  #hint {
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    font-size: 12px;
+    opacity: 0; transition: opacity .6s;
+    pointer-events: none;
+    max-width: 92vw; overflow: hidden; text-overflow: ellipsis;
+  }
+  #hint.show { opacity: 1; }
+
+  #credit {
+    right: calc(env(safe-area-inset-right, 0px) + 14px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    font-size: 10.5px; letter-spacing: .08em;
+    color: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+  }
+
+  /* 桌面键位卡 */
+  #keysCard {
+    left: calc(env(safe-area-inset-left, 0px) + 12px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: rgba(14, 17, 22, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    font-size: 11.5px; line-height: 2.05;
+    color: rgba(255, 255, 255, 0.75);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+  #keysCard h3 { font-size: 11px; letter-spacing: .2em; color: rgba(255,255,255,.45); margin-bottom: 6px; font-weight: 600; }
+  #keysCard b {
+    display: inline-block; min-width: 14px; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px; font-weight: 600;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 4px; padding: 1px 5px; margin-right: 2px;
+    color: #ffd97a;
+  }
+  #keysCard .row { display: flex; gap: 14px; }
+  #keysCard .row > span { white-space: nowrap; }
+
+  /* 触屏控制 */
+  #touchUI { display: none; }
+  body.touch #touchUI { display: block; }
+  body.touch #keysCard, body.touch #credit { display: none; }
+  .tc {
+    position: fixed; z-index: 11;
+    display: grid; gap: 8px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    user-select: none; -webkit-user-select: none;
+  }
+  .tc button {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(14, 17, 22, 0.62);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: rgba(255, 255, 255, 0.9);
+    border-radius: 14px;
+    font-size: 12.5px; font-weight: 600; letter-spacing: .04em;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+  }
+  .tc button.act { background: rgba(240, 180, 41, 0.3); border-color: rgba(240, 180, 41, 0.8); color: #ffe1a1; }
+  #dpad {
+    left: calc(env(safe-area-inset-left, 0px) + 14px);
+    grid-template-columns: repeat(3, 54px);
+    grid-template-rows: repeat(3, 54px);
+  }
+  #dpad .mid {
+    background: rgba(14, 17, 22, 0.4);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 11px; font-weight: 500;
+  }
+  #jpad {
+    right: calc(env(safe-area-inset-right, 0px) + 14px);
+    grid-template-columns: repeat(2, 64px);
+    grid-auto-rows: 44px;
+  }
+  @media (max-width: 760px) {
+    #dpad { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); }
+    #jpad { grid-template-columns: repeat(2, 58px); grid-auto-rows: 40px; gap: 7px; }
+    .tc button { font-size: 11.5px; border-radius: 12px; }
+  }
+
+  /* 帮助弹层 */
+  #helpMask {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(5, 7, 10, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  #helpMask.show { display: flex; }
+  #helpCard {
+    width: min(520px, 94vw);
+    max-height: 82vh; overflow: auto;
+    background: rgba(18, 22, 28, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 18px;
+    padding: 22px 26px;
+    font-size: 13px; line-height: 2.1;
+    color: rgba(255, 255, 255, 0.85);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  }
+  #helpCard h2 { font-size: 15px; letter-spacing: .12em; margin-bottom: 10px; color: #ffd97a; }
+  #helpCard h4 { font-size: 12px; letter-spacing: .18em; color: rgba(255,255,255,.45); margin: 12px 0 2px; font-weight: 600; }
+  #helpCard b {
+    display: inline-block; min-width: 14px; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px; font-weight: 600;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 4px; padding: 1px 6px; margin: 0 2px;
+    color: #ffd97a;
+  }
+  #helpCard p { color: rgba(255, 255, 255, 0.75); }
+  #helpClose {
+    margin-top: 14px;
+    width: 100%;
+    padding: 9px 0;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.25);
+    background: rgba(255,255,255,.08);
+    color: #fff; font-size: 13px; cursor: pointer;
+  }
+  #helpClose:hover { background: rgba(255,255,255,.16); }
+
+  #errMask {
+    position: fixed; inset: 0; z-index: 60;
+    display: none;
+    align-items: center; justify-content: center;
+    background: #0b0e12;
+    padding: 30px; text-align: center;
+    color: rgba(255,255,255,.7); font-size: 14px; line-height: 2;
+  }
+  #errMask.show { display: flex; }
