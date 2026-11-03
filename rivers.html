@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f5f2ea">
+  <meta name="description" content="百川归海 —— 中国主要河流流域示意地图，按水系分色。">
+  <title>百川归海 · 河流流域 · Nailcui</title>
+  <style>
+    :root {
+      --bg: #f5f2ea;
+      --ink: #292418;
+      --muted: #8d8471;
+      --card: rgba(255, 255, 255, 0.88);
+      --line: #e3ddcb;
+      --line2: #d3cbb6;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+    }
+
+    #stage { position: relative; width: 100%; height: 100vh; height: 100dvh; }
+    /* 底图、河流、南海小图都在一块画布上绘制 */
+    #fx {
+      position: absolute; inset: 0; touch-action: none; cursor: grab;
+      pointer-events: auto;
+    }
+    #fx.dragging { cursor: grabbing; }
+    #fx.hover-river { cursor: pointer; }
+
+    /* ---------- 顶部 HUD ---------- */
+    .hud { position: absolute; z-index: 1100; }
+    .hud-top {
+      top: 0; left: 0; right: 0;
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: calc(env(safe-area-inset-top, 0px) + 14px) 18px 0;
+      pointer-events: none;
+    }
+    .back {
+      display: inline-flex; align-items: center; height: 32px; padding: 0 14px;
+      border-radius: 999px; border: 1px solid var(--line2);
+      background: var(--card); color: var(--ink); text-decoration: none;
+      font-size: 13px; box-shadow: 0 1px 4px rgba(60, 50, 20, 0.05);
+      pointer-events: auto; white-space: nowrap;
+      transition: border-color 0.25s, color 0.25s;
+    }
+    .back:hover { border-color: #b8ad8f; color: #5c523a; }
+    .brand h1 {
+      font-size: 24px; font-weight: 800; letter-spacing: 0.28em;
+      color: #262114;
+    }
+    .brand p { font-size: 11px; color: var(--muted); margin-top: 4px; letter-spacing: 0.14em; }
+    .stats {
+      margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .stats span {
+      display: inline-flex; align-items: center; height: 26px; padding: 0 11px;
+      border-radius: 999px; background: var(--card);
+      border: 1px solid var(--line); font-size: 12px; color: #6d6551;
+      box-shadow: 0 1px 4px rgba(60, 50, 20, 0.05); white-space: nowrap;
+    }
+    .stats b { color: #3a342a; font-weight: 700; margin: 0 2px; }
+
+    /* ---------- 图例（桌面：左下卡片；移动：底部横滑） ---------- */
+    .legend {
+      left: 18px; bottom: calc(env(safe-area-inset-bottom, 0px) + 30px);
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 14px; padding: 10px 12px;
+      box-shadow: 0 6px 24px rgba(70, 58, 25, 0.08);
+      backdrop-filter: blur(6px);
+    }
+    .lg-track { display: block; }
+    .lg-row {
+      display: flex; align-items: center; gap: 9px;
+      height: 27px; padding: 0 6px; border-radius: 8px;
+      cursor: pointer; user-select: none; -webkit-user-select: none;
+    }
+    .lg-row:hover { background: #f1ecdd; }
+    .lg-swatch {
+      width: 24px; height: 3px; border-radius: 2px; flex: none;
+      box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+    }
+    .lg-name { font-size: 13px; color: #3a352a; letter-spacing: 0.02em; white-space: nowrap; }
+    .lg-meta {
+      margin-left: auto; font-size: 10.5px; color: var(--muted);
+      font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    .lg-row.off { opacity: 0.38; }
+    .lg-row.off .lg-swatch { background: #c6bfab !important; }
+    .lg-row.pinned .lg-swatch {
+      box-shadow: 0 0 0 3px rgba(70, 58, 25, 0.08);
+      outline: 1px solid #b9ae90; outline-offset: 2px;
+    }
+
+    /* ---------- 页脚 ---------- */
+    .credit {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 7px);
+      left: 50%; transform: translateX(-50%);
+      font-size: 10px; color: #a49b85; letter-spacing: 0.05em;
+      pointer-events: none; white-space: nowrap; text-align: center;
+      max-width: calc(100vw - 20px);
+    }
+
+    /* ---------- 河流提示 ---------- */
+    #tooltip {
+      position: absolute; z-index: 1350; pointer-events: none;
+      transform: translate(-50%, -160%);
+      background: rgba(255, 254, 249, 0.96); border: 1px solid var(--line2);
+      color: #3a352a; font-size: 12px; padding: 6px 11px; border-radius: 9px;
+      white-space: nowrap; letter-spacing: 0.03em;
+      box-shadow: 0 6px 20px rgba(70, 58, 25, 0.14);
+      opacity: 0; transition: opacity 0.15s;
+    }
+    #tooltip.show { opacity: 1; }
+    #tooltip b { font-weight: 700; color: #26211a; }
+    #tooltip i { font-style: normal; color: var(--muted); }
+
+    /* ---------- 移动端 ---------- */
+    @media (max-width: 640px) {
+      .hud-top { gap: 9px; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); }
+      .back { height: 30px; padding: 0 11px; font-size: 12px; }
+      .brand h1 { font-size: 17px; letter-spacing: 0.2em; }
+      .brand p { display: none; }
+      .stats span { height: 24px; padding: 0 9px; font-size: 11px; }
+      .stats .chip-extra { display: none; }
+      .legend {
+        left: 10px; right: 10px; bottom: calc(env(safe-area-inset-bottom, 0px) + 46px);
+        padding: 7px 8px;
+      }
+      .legend::after {
+        content: ''; position: absolute; top: 1px; bottom: 1px; right: 0;
+        width: 22px; border-radius: 0 14px 14px 0;
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.92));
+        pointer-events: none;
+      }
+      .lg-track {
+        display: flex; gap: 4px;
+        overflow-x: auto; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .lg-track::-webkit-scrollbar { display: none; }
+      .lg-row { flex: none; height: 30px; padding: 0 9px; gap: 6px; }
+      .lg-swatch { width: 14px; }
+      .lg-meta { display: none; }
+      .lg-name { font-size: 12px; }
+      .credit {
+        white-space: normal; line-height: 1.5; font-size: 9.5px;
+        left: 12px; right: 12px; transform: none;
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+      }
+    }
+    @media (max-height: 700px) and (min-width: 641px) {
+      .lg-row { height: 23px; }
+      .lg-meta { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="fx"></canvas>
+
+    <header class="hud hud-top">
+      <a class="back" href="./index.html">‹ 返回</a>
+      <div class="brand">
+        <h1>百川归海</h1>
+        <p>中国主要河流流域 · 按水系分色</p>
+      </div>
+      <div class="stats" id="stats"></div>
+    </header>
+
+    <div class="hud legend" id="legend" role="group" aria-label="流域显示切换"><div class="lg-track" id="lgTrack"></div></div>
+    <div class="hud credit">示意地图 · 底图含十段线 · 边界数据源自高德系（DataV.GeoAtlas）· 河流走线源自公共领域数据（Natural Earth）· 仅供参考</div>
+    <div id="tooltip"></div>
+  </div>
+
+  <script src="./fog-china.js"></script>
+  <script src="./rivers-data.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    /* ================= 基础数据 ================= */
+    var DATA = window.RIVERS_DATA || { basins: [], rivers: [] };
+    var BASINS = {};
+    var BASIN_LIST = DATA.basins.slice().sort(function (a, b) { return b.km - a.km; });
+    BASIN_LIST.forEach(function (b) { BASINS[b.id] = b; });
+
+    var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var stage = document.getElementById('stage');
+    var fx = document.getElementById('fx');
+    var ctx = fx.getContext('2d');
+    var statsEl = document.getElementById('stats');
+    var legendEl = document.getElementById('legend');
+    var tooltip = document.getElementById('tooltip');
+
+    // 流域显隐：只记被关闭的 id，默认全部显示
+    var basinHidden = {};
+    try {
+      var saved = JSON.parse(localStorage.getItem('rivers:basins:1') || '{}');
+      if (saved && typeof saved === 'object') basinHidden = saved;
+    } catch (e) { /* 隐私模式下 localStorage 不可用 */ }
+    function basinOn(id) { return !basinHidden[id]; }
+
+    var pinnedBasin = null;   // 点按钉住的流域（持续高亮）
+    var hoverBasin = null;    // 悬停河流所在流域
+    var legendHover = null;   // 图例行悬停的流域
+    function hlBasin() { return pinnedBasin || hoverBasin || legendHover; }
+
+    /* ================= 底图几何（与迷雾/行迹页同源） ================= */
+    var bbox = { lng0: 73, lng1: 135.5, lat0: 18.0, lat1: 53.8 };
+    (function () {
+      var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      function eachGeom(g, fn) {
+        if (!g) return;
+        var t = g.type, c = g.coordinates || [];
+        if (t === 'Polygon') c.forEach(function (ring) { fn(ring); });
+        else if (t === 'MultiPolygon') c.forEach(function (p) { p.forEach(function (ring) { fn(ring); }); });
+      }
+      (window.FOG_CHINA || { features: [] }).features.forEach(function (f) {
+        if (f.properties && f.properties.adcode === '100000_JD') return; // 南海诸岛段线在小图中画
+        eachGeom(f.geometry, fn);
+      });
+      function fn(pt) {
+        if (pt[1] < 17.9) return; // 主图视野裁到大陆与海南，南海交给右下小图
+        if (pt[0] < x0) x0 = pt[0]; if (pt[0] > x1) x1 = pt[0];
+        if (pt[1] < y0) y0 = pt[1]; if (pt[1] > y1) y1 = pt[1];
+      }
+      if (x1 > x0 && y1 > y0) bbox = { lng0: x0, lng1: x1, lat0: y0, lat1: y1 };
+    })();
+    var LATK = Math.cos((bbox.lat0 + bbox.lat1) / 2 * Math.PI / 180);
+    var BASEW = 1000;
+    var BASEK = BASEW / ((bbox.lng1 - bbox.lng0) * LATK);
+    var W = (bbox.lng1 - bbox.lng0) * LATK * BASEK;
+    var H = (bbox.lat1 - bbox.lat0) * BASEK;
+
+    function proj(lng, lat) {
+      return { x: (lng - bbox.lng0) * LATK * BASEK, y: (bbox.lat1 - lat) * BASEK };
+    }
+
+    var chinaPath = new Path2D();
+    var jdPath = new Path2D();          // 十段线（各段以细长多边形存储，只描边）
+    var southSeaProvs = [];             // 小图内的相邻省份
+    (function () {
+      var features = (window.FOG_CHINA || { features: [] }).features;
+      var NEAR_SEA = { 440000: 1, 450000: 1, 460000: 1, 530000: 1, 350000: 1, 710000: 1, 810000: 1, 820000: 1 };
+      features.forEach(function (f) {
+        var g = f.geometry;
+        if (!g) return;
+        var isJd = f.properties && f.properties.adcode === '100000_JD';
+        var ac = f.properties ? Number(f.properties.adcode) : 0;
+        var rings = [];
+        if (g.type === 'Polygon') g.coordinates.forEach(function (r) { rings.push(r); });
+        else if (g.type === 'MultiPolygon') g.coordinates.forEach(function (p) { p.forEach(function (r) { rings.push(r); }); });
+        if (isJd) {
+          rings.forEach(function (ring) { tracePath(jdPath, ring); });
+          return;
+        }
+        var path = new Path2D();
+        rings.forEach(function (ring) { tracePath(path, ring); });
+        if (NEAR_SEA[ac]) southSeaProvs.push(path);
+        rings.forEach(function (ring) { tracePath(chinaPath, ring); });
+      });
+      function tracePath(path, ring) {
+        for (var i = 0; i < ring.length; i++) {
+          var b = proj(ring[i][0], ring[i][1]);
+          if (i === 0) path.moveTo(b.x, b.y); else path.lineTo(b.x, b.y);
+        }
+        path.closePath();
+      }
+    })();
+
+    /* ================= 河流数据 → 基准坐标 ================= */
+    // 画序：小河先画、干流压在上面
+    var RIVERS = DATA.rivers.map(function (r) {
+      var segs = (r.p || []).map(function (flat) {
+        var pts = [];
+        for (var i = 0; i + 1 < flat.length; i += 2) {
+          var b = proj(flat[i], flat[i + 1]);
+          pts.push([b.x, b.y]);
+        }
+        return pts;
+      }).filter(function (pts) { return pts.length >= 2; });
+      return { n: String(r.n || ''), b: String(r.b || ''), w: r.w || 1, L: r.L || 0, segs: segs };
+    }).filter(function (r) { return r.segs.length && BASINS[r.b]; });
+    RIVERS.sort(function (a, b) { return (a.w - b.w) || (a.L - b.L); });
+
+    var fmtKm = function (n) { return n >= 10000 ? '≈ ' + (n / 10000).toFixed(1) + ' 万 km' : '≈ ' + n + ' km'; };
+
+    /* ================= 视图（平移 / 缩放） ================= */
+    var view = { s: 1, tx: 0, ty: 0, minS: 0.2, maxS: 8 };
+    var viewDirty = false;
+
+    function computeZoomBounds() {
+      var pad = Math.min(stage.clientWidth, stage.clientHeight) * 0.07 + 12;
+      view.minS = Math.min(
+        (stage.clientWidth - 2 * pad) / W,
+        (stage.clientHeight - 2 * pad - topPad() - bottomPad()) / H
+      );
+      view.maxS = view.minS * 12;
+    }
+    function topPad() { return Math.min(stage.clientHeight * 0.1, 72); }
+    function bottomPad() { return Math.min(stage.clientHeight * 0.14, 132); }
+
+    function fitView() {
+      computeZoomBounds();
+      view.s = view.minS;
+      view.tx = (stage.clientWidth - W * view.s) / 2;
+      view.ty = topPad() + (stage.clientHeight - topPad() - bottomPad() - H * view.s) / 2;
+    }
+
+    function clampPan() {
+      var ww = W * view.s, wh = H * view.s;
+      var sw = stage.clientWidth, sh = stage.clientHeight, m = 40;
+      if (ww <= sw) view.tx = (sw - ww) / 2;
+      else view.tx = Math.min(Math.max(view.tx, sw - ww - m), m);
+      if (wh <= sh) view.ty = (sh - wh) / 2;
+      else view.ty = Math.min(Math.max(view.ty, sh - wh - m), m);
+    }
+
+    function zoomAt(cx, cy, factor) {
+      var ns = Math.min(Math.max(view.s * factor, view.minS), view.maxS);
+      var k = ns / view.s;
+      view.tx = cx - (cx - view.tx) * k;
+      view.ty = cy - (cy - view.ty) * k;
+      view.s = ns;
+      viewDirty = true;
+      clampPan();
+      scheduleRedraw();
+    }
+
+    function cssXY(bx, by) {
+      return { x: bx * view.s + view.tx, y: by * view.s + view.ty };
+    }
+
+    /* ================= 工具 ================= */
+    function hexRGB(hex) {
+      var n = parseInt(hex.slice(1), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    function rgba(hex, a) {
+      var c = hexRGB(hex);
+      return 'rgba(' + c[0] + ', ' + c[1] + ', ' + c[2] + ', ' + a + ')';
+    }
+    function darken(hex, k) {
+      var c = hexRGB(hex).map(function (v) { return Math.round(v * (1 - k)); });
+      return 'rgb(' + c[0] + ', ' + c[1] + ', ' + c[2] + ')';
+    }
+
+    var dpr = 1;
+    var rafId = 0;
+
+    function sizeFx() {
+      var w = stage.clientWidth, h = stage.clientHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      fx.width = Math.max(1, Math.round(w * dpr));
+      fx.height = Math.max(1, Math.round(h * dpr));
+      fx.style.width = w + 'px';
+      fx.style.height = h + 'px';
+    }
+
+    /* ================= HUD ================= */
+    function buildStats() {
+      var total = RIVERS.reduce(function (s, r) { return s + r.L; }, 0);
+      total = Math.round(total / 100) * 100;
+      statsEl.innerHTML = '';
+      addChip('<b>' + BASIN_LIST.length + '</b> 大流域');
+      addChip('<b>' + RIVERS.length + '</b> 条河流', 'chip-extra');
+      addChip('总长 ' + '<b>' + (total >= 10000 ? (total / 10000).toFixed(1) + ' 万' : total) + '</b> km', 'chip-extra');
+      function addChip(html, extra) {
+        var s = document.createElement('span');
+        if (extra) s.className = extra;
+        s.innerHTML = html;
+        statsEl.appendChild(s);
+      }
+    }
+
+    function buildLegend() {
+      var track = document.getElementById('lgTrack');
+      track.innerHTML = '';
+      BASIN_LIST.forEach(function (b) {
+        var row = document.createElement('div');
+        row.className = 'lg-row';
+        row.setAttribute('role', 'button');
+        var sw = document.createElement('span');
+        sw.className = 'lg-swatch';
+        sw.style.background = b.color;
+        var nm = document.createElement('span');
+        nm.className = 'lg-name';
+        nm.textContent = b.name;
+        var mt = document.createElement('span');
+        mt.className = 'lg-meta';
+        mt.textContent = b.rivers + ' 条 · ' + b.km.toLocaleString() + ' km';
+        row.appendChild(sw); row.appendChild(nm); row.appendChild(mt);
+        b._row = row;
+        row.addEventListener('click', function () { toggleBasin(b); });
+        if (window.matchMedia && matchMedia('(hover: hover)').matches) {
+          row.addEventListener('pointerenter', function () { legendHover = b.id; syncLegend(); scheduleRedraw(); });
+          row.addEventListener('pointerleave', function () { legendHover = null; syncLegend(); scheduleRedraw(); });
+        }
+        track.appendChild(row);
+      });
+      syncLegend();
+    }
+
+    function toggleBasin(b) {
+      if (basinHidden[b.id]) delete basinHidden[b.id]; else basinHidden[b.id] = true;
+      try { localStorage.setItem('rivers:basins:1', JSON.stringify(basinHidden)); } catch (e) {}
+      if (pinnedBasin === b.id && basinHidden[b.id]) pinnedBasin = null;
+      hideTooltip();
+      syncLegend();
+      scheduleRedraw();
+    }
+
+    function syncLegend() {
+      BASIN_LIST.forEach(function (b) {
+        if (!b._row) return;
+        var on = basinOn(b.id);
+        b._row.classList.toggle('off', !on);
+        b._row.classList.toggle('pinned', pinnedBasin === b.id);
+        b._row.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+
+    /* ================= 渲染 ================= */
+    function needRaf() { return !reduceMotion && !!hlBasin(); }
+
+    function loop(t) {
+      rafId = 0;
+      draw(t || 0);
+      if (needRaf()) rafId = requestAnimationFrame(loop);
+    }
+    function scheduleRedraw() {
+      draw(performance.now());
+      if (needRaf() && !rafId) rafId = requestAnimationFrame(loop);
+    }
+
+    function draw(t) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      // 纸面底色（极轻的纵向渐变）
+      var bg = ctx.createLinearGradient(0, 0, 0, fx.height);
+      bg.addColorStop(0, '#f7f4ed');
+      bg.addColorStop(1, '#f2eee3');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, fx.width, fx.height);
+
+      // 底图：陆地微亮 + 省界发丝线
+      ctx.save();
+      ctx.setTransform(view.s * dpr, 0, 0, view.s * dpr, view.tx * dpr, view.ty * dpr);
+      ctx.fillStyle = '#fbfaf5';
+      ctx.fill(chinaPath, 'evenodd');
+      ctx.lineWidth = 0.9 / view.s;
+      ctx.strokeStyle = '#e6e0cf';
+      ctx.stroke(chinaPath);
+      ctx.restore();
+
+      drawRivers(t || 0);
+      if (view.s > view.minS * 1.9) drawRiverLabels();
+      drawSouthSeaInset();
+    }
+
+    function riverWidth(w, hl) {
+      var zf = Math.min(1.7, Math.max(0.95, Math.sqrt(view.s / view.minS)));
+      var bw = (w >= 3 ? 1.6 : w === 2 ? 1.1 : 0.78) * zf;
+      return hl ? bw * 1.45 : bw;
+    }
+
+    function drawRivers(t) {
+      var hl = hlBasin();
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      for (var ri = 0; ri < RIVERS.length; ri++) {
+        var r = RIVERS[ri];
+        if (!basinOn(r.b)) continue;
+        var isHl = hl === r.b;
+        var dim = hl && !isHl;
+        var color = BASINS[r.b].color;
+
+        // 屏幕坐标路径（一次性构建，多次描边复用）
+        ctx.beginPath();
+        for (var si = 0; si < r.segs.length; si++) {
+          var pts = r.segs[si];
+          for (var i = 0; i < pts.length; i++) {
+            var q = cssXY(pts[i][0], pts[i][1]);
+            var px = q.x * dpr, py = q.y * dpr;
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+        }
+
+        ctx.globalAlpha = dim ? 0.2 : 1;
+
+        // 主干与高亮流域：柔和底衬（水彩感）
+        if (!dim && (r.w >= 2 || isHl)) {
+          ctx.strokeStyle = rgba(color, 0.12);
+          ctx.lineWidth = riverWidth(r.w, isHl) * 3 * dpr;
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = riverWidth(r.w, isHl) * dpr;
+        ctx.stroke();
+
+        // 高亮流域的流动光段（reduced-motion 静态）
+        if (isHl && !reduceMotion) {
+          ctx.setLineDash([3 * dpr, 15 * dpr]);
+          ctx.lineDashOffset = -((t / 90) % 18) * dpr;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.lineWidth = Math.max(1, riverWidth(r.w, false) * 0.85) * dpr;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // 放大后给主要河流（w≥2）沿线标名
+    function drawRiverLabels() {
+      var placed = [];
+      var zf = view.s / view.minS;
+      ctx.textAlign = 'center';
+      ctx.font = (11 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+      // 由大到小标注，重叠则跳过
+      for (var ri = RIVERS.length - 1; ri >= 0; ri--) {
+        var r = RIVERS[ri];
+        if (r.w < 2 || r.L < 260 || !r.n || !basinOn(r.b)) continue;
+        // 取最长一段的中点作为标签锚点
+        var seg = r.segs[0], maxLen = 0;
+        for (var i = 0; i < r.segs.length; i++) {
+          var pts = r.segs[i];
+          var dx = pts[pts.length - 1][0] - pts[0][0], dy = pts[pts.length - 1][1] - pts[0][1];
+          var l = dx * dx + dy * dy;
+          if (l > maxLen) { maxLen = l; seg = pts; }
+        }
+        var mid = seg[Math.floor((seg.length - 1) / 2)];
+        var q = cssXY(mid[0], mid[1]);
+        var x = q.x * dpr, y = (q.y - 9) * dpr;
+        if (x < 30 * dpr || x > fx.width - 30 * dpr || y < 60 * dpr || y > fx.height - 30 * dpr) continue;
+        var ok = placed.every(function (p) {
+          return Math.abs(p[0] - x) > (56 + r.n.length * 5) * dpr || Math.abs(p[1] - y) > 15 * dpr;
+        });
+        if (!ok) continue;
+        placed.push([x, y]);
+        ctx.lineWidth = 3.5 * dpr;
+        ctx.strokeStyle = 'rgba(250, 248, 240, 0.92)';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(r.n, x, y);
+        ctx.fillStyle = darken(BASINS[r.b].color, 0.12);
+        ctx.fillText(r.n, x, y);
+      }
+    }
+
+    /* ================= 南海诸岛小图（合规要素） ================= */
+    // 岛屿群示意点（西沙/中沙/南沙/黄岩岛/曾母暗沙）
+    var ISLANDS = [
+      { lng: 112.34, lat: 16.83, name: '西沙群岛', dx: 5, dy: -3 },
+      { lng: 114.65, lat: 15.85, name: '中沙群岛', dx: 5, dy: -3 },
+      { lng: 117.78, lat: 15.10, name: '黄岩岛', dx: 5, dy: 8 },
+      { lng: 113.95, lat: 10.30, name: '南沙群岛', dx: 5, dy: -3 },
+      { lng: 112.28, lat: 3.98, name: '曾母暗沙', dx: 5, dy: -6 }
+    ];
+
+    function insetRect() {
+      var sw2 = stage.clientWidth, sh2 = stage.clientHeight;
+      var iw, bottom;
+      if (sw2 <= 640) {
+        iw = 84;
+        var lg = legendEl.getBoundingClientRect();
+        bottom = (stage.clientHeight - (lg.top || (stage.clientHeight - 60))) + 16;
+      } else {
+        iw = Math.max(96, Math.min(sw2 * 0.13, 128));
+        bottom = 20;
+      }
+      return { x: sw2 - iw - 16, y: sh2 - iw * 1.28 - bottom, w: iw, h: iw * 1.28 };
+    }
+
+    function drawSouthSeaInset() {
+      var rc = insetRect();
+      var x0 = rc.x * dpr, y0 = rc.y * dpr, iw = rc.w * dpr, ih = rc.h * dpr;
+      if (iw < 40 * dpr) return;
+
+      // 底框
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.beginPath();
+      roundRect(x0, y0, iw, ih, 8 * dpr);
+      ctx.fillStyle = '#fdfcf7';
+      ctx.fill();
+      ctx.lineWidth = 1 * dpr;
+      ctx.strokeStyle = '#d8d1bf';
+      ctx.stroke();
+      ctx.save();
+      ctx.clip();
+
+      // 南海范围投影拟合（经纬度范围与相邻省界一起投到同一基准坐标）
+      var a = proj(105.5, 24.5), b = proj(123.5, 2.5);
+      var sc = Math.min((iw - 14 * dpr) / Math.abs(b.x - a.x), (ih - 26 * dpr) / Math.abs(b.y - a.y));
+      var ox = x0 + iw / 2 - (a.x + b.x) / 2 * sc;
+      var oy = y0 + ih / 2 + 9 * dpr - (a.y + b.y) / 2 * sc;
+
+      // 1) 相邻省份淡色填充
+      ctx.setTransform(sc, 0, 0, sc, ox, oy);
+      ctx.fillStyle = '#e9e4d2';
+      ctx.strokeStyle = '#cbc3ac';
+      ctx.lineWidth = 0.8 / (sc / dpr);
+      for (var i = 0; i < southSeaProvs.length; i++) {
+        ctx.fill(southSeaProvs[i], 'evenodd');
+        ctx.stroke(southSeaProvs[i]);
+      }
+      // 2) 十段线
+      ctx.strokeStyle = '#a59d86';
+      ctx.lineWidth = 1 / (sc / dpr);
+      ctx.stroke(jdPath);
+
+      // 3) 岛屿群示意点与标注（屏幕坐标）
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.font = (8.5 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.textAlign = 'left';
+      for (var k = 0; k < ISLANDS.length; k++) {
+        var isl = ISLANDS[k];
+        var pb = proj(isl.lng, isl.lat);
+        var px = ox + pb.x * sc, py = oy + pb.y * sc;
+        if (px < x0 + 2 * dpr || px > x0 + iw - 2 * dpr || py < y0 + 2 * dpr || py > y0 + ih - 2 * dpr) continue;
+        ctx.fillStyle = '#7b7462';
+        ctx.beginPath();
+        ctx.arc(px, py, 2 * dpr, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#6d6551';
+        ctx.fillText(isl.name, px + isl.dx * dpr, py + isl.dy * dpr);
+      }
+      // 4) 标题
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#59523f';
+      ctx.font = (10 * dpr) + 'px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.fillText('南海诸岛', x0 + iw / 2, y0 + ih - 7 * dpr);
+      ctx.restore();
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    /* ================= 悬停 / 点按 ================= */
+    function hitRiver(clientX, clientY) {
+      var rect = stage.getBoundingClientRect();
+      var x = clientX - rect.left, y = clientY - rect.top;
+      var best = null, bestD = 1e9;
+      RIVERS.forEach(function (r) {
+        if (!basinOn(r.b)) return;
+        var thr = Math.max(8, (r.w >= 3 ? 6 : r.w === 2 ? 5 : 3.5) + Math.sqrt(view.s / view.minS) * 2);
+        r.segs.forEach(function (pts) {
+          for (var i = 1; i < pts.length; i++) {
+            var d = segDist(x, y, pts[i - 1], pts[i]);
+            if (d < bestD && d < thr) { bestD = d; best = r; }
+          }
+        });
+      });
+      return best;
+      function segDist(px, py, a, b) {
+        var ax = a[0] * view.s + view.tx, ay = a[1] * view.s + view.ty;
+        var bx = b[0] * view.s + view.tx, by = b[1] * view.s + view.ty;
+        var dx = bx - ax, dy = by - ay;
+        var L2 = dx * dx + dy * dy;
+        var t = L2 ? ((px - ax) * dx + (py - ay) * dy) / L2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+      }
+    }
+
+    function showRiverTooltip(r, clientX, clientY) {
+      var rect = stage.getBoundingClientRect();
+      tooltip.innerHTML = '';
+      var b = document.createElement('b');
+      b.textContent = r.n || '未名支流';
+      tooltip.appendChild(b);
+      tooltip.appendChild(document.createTextNode(' · '));
+      var bn = document.createElement('i');
+      bn.textContent = BASINS[r.b].name;
+      tooltip.appendChild(bn);
+      tooltip.appendChild(document.createTextNode(' · ' + fmtKm(r.L)));
+      tooltip.style.left = (clientX - rect.left) + 'px';
+      tooltip.style.top = (clientY - rect.top - 12) + 'px';
+      tooltip.classList.add('show');
+    }
+    function hideTooltip() { tooltip.classList.remove('show'); }
+
+    /* ================= 画布交互：拖拽 / 缩放 / 点按 ================= */
+    var pointers = new Map();
+    var panState = null;
+    var pinchState = null;
+
+    function localXY(e) {
+      var r = fx.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+    function pinchBase() {
+      var ps = Array.from(pointers.values());
+      var dx = ps[0].x - ps[1].x, dy = ps[0].y - ps[1].y;
+      return {
+        dist: Math.max(Math.hypot(dx, dy), 1),
+        cx: (ps[0].x + ps[1].x) / 2, cy: (ps[0].y + ps[1].y) / 2,
+        s: view.s, tx: view.tx, ty: view.ty
+      };
+    }
+
+    fx.addEventListener('pointerdown', function (e) {
+      try { fx.setPointerCapture(e.pointerId); } catch (err) { /* 指针可能已失效，忽略 */ }
+      var p = localXY(e);
+      pointers.set(e.pointerId, p);
+      if (pointers.size === 1) {
+        panState = { sx: p.x, sy: p.y, tx0: view.tx, ty0: view.ty, cx: e.clientX, cy: e.clientY, moved: false, t0: Date.now() };
+        pinchState = null;
+        fx.classList.add('dragging');
+      } else if (pointers.size === 2) {
+        panState = null;
+        pinchState = pinchBase();
+      }
+    });
+
+    fx.addEventListener('pointermove', function (e) {
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, localXY(e));
+
+      if (pointers.size === 2 && pinchState) {
+        var b = pinchBase();
+        var ns = Math.min(Math.max(pinchState.s * b.dist / pinchState.dist, view.minS), view.maxS);
+        var k = ns / pinchState.s;
+        view.s = ns;
+        view.tx = b.cx - (pinchState.cx - pinchState.tx) * k;
+        view.ty = b.cy - (pinchState.cy - pinchState.ty) * k;
+        viewDirty = true;
+        clampPan();
+        hideTooltip();
+        scheduleRedraw();
+        return;
+      }
+      if (pointers.size === 1 && panState) {
+        var p = pointers.get(e.pointerId);
+        if (Math.hypot(p.x - panState.sx, p.y - panState.sy) > 6) panState.moved = true;
+        if (panState.moved) {
+          view.tx = panState.tx0 + p.x - panState.sx;
+          view.ty = panState.ty0 + p.y - panState.sy;
+          viewDirty = true;
+          clampPan();
+          hideTooltip();
+          scheduleRedraw();
+        }
+        return;
+      }
+      // 悬停（桌面）：河流高亮 + 提示
+      var hit = hitRiver(e.clientX, e.clientY);
+      var newHover = hit ? hit.b : null;
+      fx.classList.toggle('hover-river', !!hit);
+      if (hit) showRiverTooltip(hit, e.clientX, e.clientY); else hideTooltip();
+      if (newHover !== hoverBasin) {
+        hoverBasin = newHover;
+        scheduleRedraw();
+      }
+    });
+
+    function endPointer(e) {
+      var wasSingle = pointers.size === 1;
+      pointers.delete(e.pointerId);
+      if (wasSingle && panState && !panState.moved && Date.now() - panState.t0 < 600) {
+        // 点按（未拖动）：命中河流 → 钉住其流域；空白 → 解除钉住
+        var hit = hitRiver(e.clientX, e.clientY);
+        if (hit) {
+          pinnedBasin = (pinnedBasin === hit.b) ? null : hit.b;
+          hoverBasin = hit.b;
+          if (pinnedBasin) showRiverTooltip(hit, e.clientX, e.clientY); else hideTooltip();
+        } else {
+          pinnedBasin = null;
+          hideTooltip();
+        }
+        syncLegend();
+        scheduleRedraw();
+      }
+      panState = null;
+      pinchState = null;
+      if (pointers.size === 1) {
+        var rest = Array.from(pointers.values())[0];
+        panState = { sx: rest.x, sy: rest.y, tx0: view.tx, ty0: view.ty, cx: e.clientX, cy: e.clientY, moved: true, t0: Date.now() };
+      }
+      if (pointers.size === 0) fx.classList.remove('dragging');
+    }
+    fx.addEventListener('pointerup', endPointer);
+    fx.addEventListener('pointercancel', endPointer);
+
+    fx.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var p = localXY(e);
+      zoomAt(p.x, p.y, Math.exp(-e.deltaY * 0.0016));
+    }, { passive: false });
+
+    fx.addEventListener('dblclick', function (e) {
+      var p = localXY(e);
+      zoomAt(p.x, p.y, 1.9);
+    });
+
+    fx.addEventListener('mouseleave', function () {
+      hideTooltip();
+      if (hoverBasin) { hoverBasin = null; scheduleRedraw(); }
+    });
+
+    /* ================= 启动 ================= */
+    function init() {
+      sizeFx();
+      fitView();
+      buildStats();
+      buildLegend();
+
+      window.addEventListener('resize', function () {
+        sizeFx();
+        if (viewDirty) {
+          computeZoomBounds();
+          view.s = Math.min(Math.max(view.s, view.minS), view.maxS);
+          clampPan();
+        } else {
+          fitView();
+        }
+        scheduleRedraw();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+          pinnedBasin = null;
+          hideTooltip();
+          syncLegend();
+          scheduleRedraw();
+        }
+      });
+
+      scheduleRedraw();
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>
