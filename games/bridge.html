@@ -281,7 +281,7 @@
               <li><span class="mat-line" style="background:#4a5568"></span><b>道路 ¥60/m</b>：唯一能行车的桥面，较重。</li>
               <li><span class="mat-line" style="background:#a06a3a"></span><b>木材 ¥26/m</b>：便宜的支撑，强度一般。</li>
               <li><span class="mat-line" style="background:#8ea3bd"></span><b>钢梁 ¥95/m</b>：最强构件，适合大跨度主力。</li>
-              <li><span class="mat-line" style="background:#d7dee8"></span><b>钢索 ¥38/m</b>：只能受拉不能受压，适合吊在高处锚点做拉索；且可比其它材料跨更远（7.5 米 vs 4.6 米）。</li>
+              <li><span class="mat-line" style="background:#d7dee8"></span><b>钢索 ¥38/m</b>：只能受拉不能受压，适合吊在高处锚点做拉索；长度不限，可从远处锚点直拉长跨（按米计价）。</li>
             </ul>
             <h4>应力图例</h4>
             <div class="stress-bar"></div>
@@ -352,7 +352,7 @@
       road:  { id: 'road',  name: '道路', cost: 60, dens: 11,  alpha: 3.0e-6, lim: 0.030, thick: 0.36, road: true },
       wood:  { id: 'wood',  name: '木材', cost: 26, dens: 3.5, alpha: 2.4e-6, lim: 0.037, thick: 0.22 },
       steel: { id: 'steel', name: '钢梁', cost: 95, dens: 7,   alpha: 9e-7,   lim: 0.055, thick: 0.26 },
-      cable: { id: 'cable', name: '钢索', cost: 38, dens: 1.2, alpha: 1.3e-6, lim: 0.100, thick: 0.09, cable: true, maxlen: 7.5 }
+      cable: { id: 'cable', name: '钢索', cost: 38, dens: 1.2, alpha: 1.3e-6, lim: 0.100, thick: 0.09, cable: true, maxlen: Infinity }
     };
     var MAT_ORDER = ['road', 'wood', 'steel', 'cable'];
 
@@ -638,9 +638,9 @@
       }
       var len = beamLen(aKey, bKey);
       if (len < 0.5) return { ok: false, why: '' };
-      // 钢索是连续柔性构件，允许更长跨度（斜拉索）；刚性材料保持 2 格逼出桁架解法
+      // 钢索不限长度（连续柔性构件，按米计价自平衡）；刚性材料保持 2 格逼出桁架解法
       var lim = MATS[matId].maxlen || PH.MAXLEN;
-      if (len > lim + 0.01) return { ok: false, why: matId === 'cable' ? '钢索太长（最长 7.5 米）' : '构件太长（最长约 4.6 米）' };
+      if (len > lim + 0.01) return { ok: false, why: '构件太长（最长约 4.6 米）' };
       if (isFinite(level.budget) && usedCost() + beamCost(len, matId) > level.budget) return { ok: false, why: '预算不足' };
       return { ok: true, cost: beamCost(len, matId), len: len };
     }
