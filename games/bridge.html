@@ -271,6 +271,7 @@
               <li>光铺一层道路跨大跨度必然垮塌，桥面上下都要有结构。</li>
               <li>钢索吊在高位锚点上，能把长跨中部「拎」起来。</li>
               <li>星级按省钱程度评定：3★ ≤ 预算 72%，2★ ≤ 88%。</li>
+              <li>轿车关通关后可点「🚚 换卡车验证」用重卡复验同一方案，扛住重载即获得 🚚 徽章（星级按轿车成绩计，不受重卡影响）。</li>
             </ul>
             <h4>操作</h4>
             <p>
@@ -293,6 +294,7 @@
           <div class="ov-btns">
             <button class="btn" id="endBuild" type="button">↩ 返回搭建</button>
             <button class="btn" id="endRetry" type="button">⟳ 再试一次</button>
+            <button class="btn" id="endTruck" type="button" hidden>🚚 换卡车验证</button>
             <button class="btn primary" id="endNext" type="button" hidden>下一关 →</button>
           </div>
         </div>
@@ -428,6 +430,7 @@
     var cam = { x: 10, y: -3, s: 30 };
     var W = 0, H = 0, DPR = 1;
     var sim = null;
+    var runVeh = null; // 重卡验证：临时换车跑同一方案（null = 按关卡默认车型）
     var dragFrom = null, dragTo = null, hoverBeamIdx = -1, hoverNodeKey = null;
     var clearArmed = 0, toastTimer = 0, endTimer = 0;
     var frameLast = 0, acc = 0;
@@ -664,7 +667,7 @@
         nodes: nodes, beams: beams, parts: [],
         t: 0, status: 'settle', timeScale: slowOn ? 0.35 : 1,
         settleT: 1.0, follow: true, shake: 0,
-        veh: makeVehicle(level.veh),
+        veh: makeVehicle(runVeh || level.veh),
         stuckX: level.spawn, stuckT: 0, dust: 0
       };
       computeMasses();
@@ -675,6 +678,7 @@
     function stopTest(silent) {
       if (endTimer) { clearTimeout(endTimer); endTimer = 0; }
       sim = null;
+      runVeh = null; // 结束重卡验证，恢复关卡默认车型
       mode = 'build';
       syncBars();
       elMaxChip.hidden = true;
@@ -939,39 +943,63 @@
       sim.status = kind;
       var used = usedCost();
       var title, info = '', stars = 0;
+      var challenge = !!runVeh && runVeh !== level.veh; // 重卡验证（同一方案换车复验）
       if (kind === 'win') {
-        var r = isFinite(level.budget) ? used / level.budget : 0;
-        stars = level.sandbox ? 0 : (r <= 0.72 ? 3 : r <= 0.88 ? 2 : 1);
-        title = level.sandbox ? '🎉 通车成功' : '🎉 通车成功！';
-        info = '造价 <b>' + fmtMoney(used) + '</b> / 预算 ' + fmtMoney(level.budget) +
-          (level.sandbox ? '' : '（用掉 ' + Math.round(r * 100) + '%）');
-        if (!level.sandbox) {
-          var best = progress.lv[level.id];
-          var isNew = !best || stars > best.stars || (stars === best.stars && used < best.cost);
-          if (isNew) progress.lv[level.id] = { stars: stars, cost: used };
-          if (levelIdx < REAL_LEVELS - 1) progress.unlocked = Math.max(progress.unlocked, levelIdx + 2);
-          saveProgress(progress);
-          buildLevelList();
-          info += '<br>' + (isNew ? '<b style="color:var(--acc2)">★ 新纪录！</b>' : '本关最佳 ' + '★'.repeat(progress.lv[level.id].stars) + ' · ' + fmtMoney(progress.lv[level.id].cost));
+        if (challenge) {
+          // 重卡验证通过：不改星级/造价，只记 🚚 徽章
+          title = '🚚 重卡验证通过！';
+          info = '同一方案扛住了 <b>1950kg 重卡</b> 的碾压，结构足够坚固。';
+          if (runVeh === 'truck') {
+            var ent = progress.lv[level.id];
+            if (ent && !ent.truck) {
+              ent.truck = true;
+              saveProgress(progress);
+              buildLevelList();
+              info += '<br><b style="color:var(--acc2)">★ 获得 🚚 重卡徽章</b>';
+            } else if (ent && ent.truck) {
+              info += '<br>本关已持有 🚚 徽章。';
+            }
+          }
+        } else {
+          var r = isFinite(level.budget) ? used / level.budget : 0;
+          stars = level.sandbox ? 0 : (r <= 0.72 ? 3 : r <= 0.88 ? 2 : 1);
+          title = level.sandbox ? '🎉 通车成功' : '🎉 通车成功！';
+          info = '造价 <b>' + fmtMoney(used) + '</b> / 预算 ' + fmtMoney(level.budget) +
+            (level.sandbox ? '' : '（用掉 ' + Math.round(r * 100) + '%）');
+          if (!level.sandbox) {
+            var best = progress.lv[level.id];
+            var isNew = !best || stars > best.stars || (stars === best.stars && used < best.cost);
+            if (isNew) {
+              progress.lv[level.id] = { stars: stars, cost: used };
+              if (best && best.truck) progress.lv[level.id].truck = true; // 保留已有徽章
+            }
+            if (levelIdx < REAL_LEVELS - 1) progress.unlocked = Math.max(progress.unlocked, levelIdx + 2);
+            saveProgress(progress);
+            buildLevelList();
+            info += '<br>' + (isNew ? '<b style="color:var(--acc2)">★ 新纪录！</b>' : '本关最佳 ' + '★'.repeat(progress.lv[level.id].stars) + ' · ' + fmtMoney(progress.lv[level.id].cost));
+          }
         }
       } else {
         title = '💥 桥塌了';
         if (kind === 'fall') { title = '💫 车辆坠落'; info = '车掉进了深渊。'; }
         else if (kind === 'stuck') { title = '🚧 车辆卡住'; info = '车没能前进——桥面断了或有台阶。'; }
         else info = '超时未通过。';
+        if (challenge) { title = '💥 重卡压垮了这座桥'; info = '1950kg 重卡超出了这套方案的承载。' + (kind === 'stuck' ? '<br>桥面被压出台阶，车卡住了。' : ''); }
         info += '<br>提示：' + TIPS[Math.floor(Math.random() * TIPS.length)];
       }
       endTimer = setTimeout(function () {
         $('endTitle').textContent = title;
         $('endInfo').innerHTML = info;
         var es = $('endStars');
-        if (kind === 'win' && !level.sandbox) {
+        if (kind === 'win' && !level.sandbox && !challenge) {
           es.hidden = false;
           es.innerHTML = '<span>' + '★'.repeat(stars) + '</span><span class="off">' + '☆'.repeat(3 - stars) + '</span>';
         } else es.hidden = true;
-        $('endTag').textContent = kind === 'win' ? '检验通过' : '检验失败';
+        $('endTag').textContent = kind === 'win' ? (challenge ? '重卡复验' : '检验通过') : '检验失败';
         var next = $('endNext');
         next.hidden = !(kind === 'win' && !level.sandbox && levelIdx < REAL_LEVELS - 1);
+        var trk = $('endTruck');
+        trk.hidden = !(kind === 'win' && !challenge && !level.sandbox && level.veh === 'car');
         showOverlay(ovEnd);
       }, 700);
     }
@@ -1517,8 +1545,9 @@
     function syncBars() {
       buildBar.hidden = mode !== 'build';
       testBar.hidden = mode !== 'test';
-      var sb = !!level.sandbox;
-      vehSep.hidden = carBtn.hidden = truckBtn.hidden = !(sb && mode === 'test');
+      // 沙盒随时换车；重卡验证期间也可切回默认车型
+      var showVeh = mode === 'test' && (!!level.sandbox || !!runVeh);
+      vehSep.hidden = carBtn.hidden = truckBtn.hidden = !showVeh;
       syncVehBtns();
     }
     function syncFollow() {
@@ -1526,10 +1555,11 @@
     }
     var slowOn = false;
     function syncVehBtns() {
-      carBtn.style.fontWeight = level.veh === 'car' ? '700' : '400';
-      truckBtn.style.fontWeight = level.veh === 'truck' ? '700' : '400';
-      carBtn.classList.toggle('primary', level.veh === 'car');
-      truckBtn.classList.toggle('primary', level.veh === 'truck');
+      var cur = runVeh || level.veh;
+      carBtn.style.fontWeight = cur === 'car' ? '700' : '400';
+      truckBtn.style.fontWeight = cur === 'truck' ? '700' : '400';
+      carBtn.classList.toggle('primary', cur === 'car');
+      truckBtn.classList.toggle('primary', cur === 'truck');
     }
     undoBtn.addEventListener('click', doUndo);
     clearBtn.addEventListener('click', function () {
@@ -1556,8 +1586,22 @@
       slowBtn.classList.toggle('primary', slowOn);
       if (sim) sim.timeScale = slowOn ? 0.35 : 1;
     });
-    carBtn.addEventListener('click', function () { level.veh = 'car'; syncVehBtns(); startTest(); });
-    truckBtn.addEventListener('click', function () { level.veh = 'truck'; syncVehBtns(); startTest(); });
+    carBtn.addEventListener('click', function () {
+      if (level.sandbox) level.veh = 'car';
+      runVeh = null; // 退出重卡验证，回默认车型
+      syncVehBtns(); startTest();
+    });
+    truckBtn.addEventListener('click', function () {
+      if (level.sandbox) level.veh = 'truck';
+      else if (level.veh === 'car') runVeh = 'truck'; // 非沙盒 = 重卡验证
+      syncVehBtns(); startTest();
+    });
+    $('endTruck').addEventListener('click', function () {
+      runVeh = 'truck';
+      hideOverlays();
+      startTest();
+      toast('🚚 重卡验证：同一方案，1950kg 碾压', 2200);
+    });
     $('zin').addEventListener('click', function () { zoomAt(W / 2, H / 2, 1.25); });
     $('zout').addEventListener('click', function () { zoomAt(W / 2, H / 2, 0.8); });
     $('zfit').addEventListener('click', fitView);
@@ -1597,7 +1641,7 @@
         var best = progress.lv[lv.id];
         var side;
         if (lv.sandbox) side = '<div class="st" style="color:var(--ink-faint)">∞</div>自由造';
-        else if (best) side = '<div class="st">' + '★'.repeat(best.stars) + '☆'.repeat(3 - best.stars) + '</div>' + fmtMoney(best.cost);
+        else if (best) side = '<div class="st">' + '★'.repeat(best.stars) + '☆'.repeat(3 - best.stars) + (best.truck ? ' 🚚' : '') + '</div>' + fmtMoney(best.cost);
         else side = '<div class="st" style="color:var(--ink-faint)">☆☆☆</div>未通关';
         row.innerHTML =
           '<span class="lv-no">' + (lv.sandbox ? '▦' : idx + 1) + '</span>' +
