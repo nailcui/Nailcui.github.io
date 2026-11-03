@@ -53,6 +53,17 @@
         <span class="card-go">→</span>
       </a>
 
+      <a class="card" href="./bridge.html">
+        <span class="card-ico">🌉</span>
+        <span class="card-body">
+          <h2>造桥</h2>
+          <p>道路 / 木材 / 钢梁 / 钢索搭一座桥，预算内让汽车安全驶过：应力变色、构件断裂，6 关挑战 + 自由沙盒。</p>
+          <span class="card-best" id="best-bridge"></span>
+          <span class="card-tags"><span>物理</span><span>建造</span><span>关卡</span></span>
+        </span>
+        <span class="card-go">→</span>
+      </a>
+
       <div class="card ghost">更多游戏 · 敬请期待</div>
     </main>
 
@@ -80,6 +91,17 @@
       document.getElementById('best-memory').textContent = '★ 本机最佳 ' + bMem + ' 步';
       document.getElementById('best-memory').classList.add('show');
     }
+    try {
+      var prog = JSON.parse(localStorage.getItem('games:bridge:progress') || '');
+      var won = 0;
+      if (prog && prog.lv) {
+        Object.keys(prog.lv).forEach(function (id) { if (prog.lv[id].stars > 0) won++; });
+      }
+      if (won > 0) {
+        document.getElementById('best-bridge').textContent = '★ 已通关 ' + won + ' / 6 关';
+        document.getElementById('best-bridge').classList.add('show');
+      }
+    } catch (e) {}
   })();
   </script>
 </body>

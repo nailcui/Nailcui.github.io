@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1420">
+  <meta name="description" content="造桥 —— 道路/木材/钢梁/钢索搭建桁架与吊桥，预算内让汽车安全过河；6 关挑战 + 自由沙盒，键鼠与触屏皆可玩。">
+  <title>造桥 · 小游戏 · Nailcui</title>
+  <link rel="stylesheet" href="./games.css">
+  <style>
+    /* ---------- 页面级布局：整页钉在视口内 ---------- */
+    html, body { height: 100%; }
+    body { overflow: hidden; }
+    /* games.css 的 .btn/.chip/.bar 均为 flex 布局，会覆盖 UA 的 [hidden]，
+       这里显式恢复 hidden 语义，避免搭建条/测试条同时显示 */
+    [hidden] { display: none !important; }
+    .page {
+      height: 100vh; height: 100dvh;
+      max-height: 100vh; max-height: 100dvh;
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    }
+    .top { margin-bottom: 10px; }
+    .brand p { max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ---------- 画布舞台 ---------- */
+    .bwrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      border-radius: 16px;
+      border: 1px solid var(--hair);
+      background: #0a1420;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+    /* ---------- 浮动信息 ---------- */
+    .float-budget {
+      position: absolute; top: 10px; left: 10px; z-index: 3; pointer-events: none;
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .chip { height: 28px; padding: 0 11px; }
+    .chip b { font-size: 13px; }
+    .chip.warn b { color: var(--warm); }
+    .float-view {
+      position: absolute; top: 10px; right: 10px; z-index: 3;
+      display: flex; gap: 6px;
+    }
+    .vbtn {
+      width: 30px; height: 30px; padding: 0; justify-content: center;
+      border-radius: 10px; font-size: 14px; line-height: 1;
+    }
+
+    /* ---------- 底部工具条 ---------- */
+    .bar {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      z-index: 4;
+      display: flex; align-items: center; gap: 5px;
+      max-width: calc(100% - 16px);
+      padding: 7px;
+      border-radius: 16px;
+      border: 1px solid var(--hair);
+      background: rgba(8, 16, 26, 0.78);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      overflow-x: auto; scrollbar-width: none;
+      /* 右缘渐隐：提示还有更多按钮可横滑 */
+      -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 22px), transparent 100%);
+      mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 22px), transparent 100%);
+    }
+    .bar::-webkit-scrollbar { display: none; }
+    .bar .btn { height: 40px; border-radius: 12px; flex: none; }
+    .mat-btn {
+      display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; min-width: 58px; height: 46px; padding: 0 10px;
+      border-radius: 12px; border: 1px solid var(--hair);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--ink-dim); cursor: pointer; flex: none;
+      transition: border-color 0.2s, color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+    .mat-btn:hover { border-color: rgba(255, 255, 255, 0.3); color: var(--ink); }
+    .mat-btn.on {
+      border-color: var(--line); color: var(--ink);
+      background: rgba(77, 240, 216, 0.1);
+      box-shadow: 0 0 14px rgba(77, 240, 216, 0.12) inset;
+    }
+    .mat-btn .m-line { width: 26px; height: 4px; border-radius: 2px; }
+    .mat-btn .m-name { font-size: 12px; letter-spacing: 0.05em; }
+    .mat-btn .m-cost { font-size: 10px; color: var(--ink-faint); font-family: var(--mono); }
+    .mat-btn.on .m-cost { color: var(--acc2); }
+    .bar-sep { width: 1px; height: 30px; background: var(--hair); margin: 0 3px; flex: none; }
+    .btn.go { min-width: 92px; justify-content: center; font-weight: 600; }
+
+    /* ---------- 提示与新手气泡 ---------- */
+    .toast {
+      position: absolute; top: 12px; left: 50%; transform: translate(-50%, -6px);
+      z-index: 8; padding: 7px 16px; border-radius: 999px;
+      border: 1px solid var(--line); background: rgba(8, 18, 28, 0.9);
+      color: var(--acc2); font-size: 12.5px; letter-spacing: 0.05em;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s;
+      max-width: 86%; text-align: center;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .hint {
+      position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+      z-index: 5; max-width: min(460px, 88%);
+      padding: 12px 16px; border-radius: 14px;
+      border: 1px solid var(--line); background: rgba(8, 18, 28, 0.88);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      font-size: 12.5px; line-height: 1.8; color: var(--ink-dim);
+    }
+    .hint b { color: var(--acc2); font-weight: 600; }
+    .hint .h-close {
+      display: inline-block; margin-top: 6px; padding: 3px 12px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--acc2); font-size: 12px; cursor: pointer;
+    }
+
+    /* ---------- 遮罩（复用 games.css .overlay） ---------- */
+    .overlay { border-radius: 16px; z-index: 10; }
+    .overlay .ov-box {
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      max-height: 100%; overflow-y: auto; padding: 6px; width: min(620px, 94%);
+    }
+    .lv-list { display: flex; flex-direction: column; gap: 8px; width: min(480px, 92%); }
+    .lv-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 14px; border-radius: 12px;
+      border: 1px solid var(--hair); background: rgba(255, 255, 255, 0.03);
+      color: var(--ink); cursor: pointer; text-align: left; width: 100%;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .lv-row:hover { border-color: var(--line); background: rgba(77, 240, 216, 0.07); }
+    .lv-row.lock { opacity: 0.42; cursor: default; }
+    .lv-row.lock:hover { border-color: var(--hair); background: rgba(255, 255, 255, 0.03); }
+    .lv-row.cur { border-color: var(--line); background: rgba(77, 240, 216, 0.1); }
+    .lv-no {
+      flex: none; width: 30px; height: 30px; border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--acc2);
+      background: rgba(77, 240, 216, 0.1); border: 1px solid rgba(77, 240, 216, 0.22);
+    }
+    .lv-body { flex: 1; min-width: 0; }
+    .lv-body h3 { font-size: 14px; font-weight: 600; letter-spacing: 0.06em; }
+    .lv-body p { font-size: 11.5px; color: var(--ink-dim); margin-top: 3px; line-height: 1.6; }
+    .lv-side { flex: none; text-align: right; font-size: 11px; color: var(--ink-faint); line-height: 1.7; }
+    .lv-side .st { color: #e8b04b; letter-spacing: 0.12em; font-size: 12.5px; }
+    .stars-big { font-size: 30px; letter-spacing: 0.28em; color: #e8b04b; text-indent: 0.28em; }
+    .stars-big .off { color: rgba(255, 255, 255, 0.16); }
+    .ov-kv { font-size: 12.5px; color: var(--ink-dim); line-height: 1.9; }
+    .ov-kv b { color: var(--ink); font-family: var(--mono); }
+    .help-cards { display: flex; flex-direction: column; gap: 8px; width: min(520px, 92%); text-align: left; }
+    .help-cards h4 {
+      font-size: 12px; color: var(--acc2); letter-spacing: 0.2em; margin: 6px 0 2px;
+    }
+    .help-cards p, .help-cards li { font-size: 12.5px; line-height: 1.9; color: var(--ink-dim); }
+    .help-cards ul { padding-left: 18px; }
+    .help-cards .mat-line { display: inline-block; width: 22px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+    .stress-bar {
+      width: min(300px, 80%); height: 8px; border-radius: 4px; margin: 2px auto 0;
+      background: linear-gradient(90deg, #3ecf8e, #e8c34b, #ff5a5a);
+    }
+    .kbd {
+      display: inline-block; padding: 1px 7px; border-radius: 6px; margin: 0 2px;
+      border: 1px solid var(--hair); background: rgba(255, 255, 255, 0.05);
+      font-family: var(--mono); font-size: 11px; color: var(--ink);
+    }
+
+    .credit { margin-top: 10px; }
+
+    @media (max-width: 640px) {
+      .brand p { display: none; }
+      .float-budget { top: 8px; left: 8px; gap: 4px; }
+      .chip { height: 26px; padding: 0 9px; }
+      .chip b { font-size: 12px; }
+      .mat-btn { min-width: 52px; height: 44px; }
+      .toast { top: 52px; } /* 避开左上角造价/预算芯片 */
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <a class="back" href="./index.html">‹ 游戏箱</a>
+      <div class="brand">
+        <h1>造桥</h1>
+        <p id="lvName">…</p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="lvBtn" type="button">关卡</button>
+        <button class="btn" id="helpBtn" type="button">帮助</button>
+      </div>
+    </header>
+
+    <main class="bwrap" id="bwrap">
+      <canvas id="cv"></canvas>
+
+      <div class="float-budget">
+        <span class="chip" id="costChip"><label>造价</label><b id="costVal">¥0</b></span>
+        <span class="chip" id="budgetChip"><label>预算</label><b id="budgetVal">¥0</b></span>
+        <span class="chip" id="maxChip" hidden><label>荷载</label><b id="maxVal">0%</b></span>
+      </div>
+      <div class="float-view">
+        <button class="btn vbtn" id="zin" type="button" title="放大">＋</button>
+        <button class="btn vbtn" id="zout" type="button" title="缩小">－</button>
+        <button class="btn vbtn" id="zfit" type="button" title="适配视图">⤢</button>
+      </div>
+
+      <div class="bar" id="buildBar">
+        <button class="mat-btn on" type="button" data-mat="road"><span class="m-line" style="background:#4a5568"></span><span class="m-name">道路</span><span class="m-cost">¥60/m</span></button>
+        <button class="mat-btn" type="button" data-mat="wood"><span class="m-line" style="background:#a06a3a"></span><span class="m-name">木材</span><span class="m-cost">¥26/m</span></button>
+        <button class="mat-btn" type="button" data-mat="steel"><span class="m-line" style="background:#8ea3bd"></span><span class="m-name">钢梁</span><span class="m-cost">¥95/m</span></button>
+        <button class="mat-btn" type="button" data-mat="cable"><span class="m-line" style="background:#d7dee8"></span><span class="m-name">钢索</span><span class="m-cost">¥38/m</span></button>
+        <button class="mat-btn" type="button" data-mat="del"><span class="m-line" style="background:transparent;border-top:2px dashed var(--danger)"></span><span class="m-name">拆除</span><span class="m-cost">点/划</span></button>
+        <span class="bar-sep"></span>
+        <button class="btn" id="undoBtn" type="button" title="撤销 (Z)">↶ 撤销</button>
+        <button class="btn" id="clearBtn" type="button">清空</button>
+        <span class="bar-sep"></span>
+        <button class="btn primary go" id="testBtn" type="button">▶ 开始测试</button>
+      </div>
+
+      <div class="bar" id="testBar" hidden>
+        <button class="btn" id="stopBtn" type="button">⏹ 返回搭建</button>
+        <button class="btn" id="retryBtn" type="button">⟳ 重试</button>
+        <button class="btn" id="followBtn" type="button">跟随 ✓</button>
+        <button class="btn" id="slowBtn" type="button">慢速</button>
+        <span class="bar-sep" id="vehSep" hidden></span>
+        <button class="btn" id="carBtn" hidden type="button">轿车</button>
+        <button class="btn" id="truckBtn" hidden type="button">卡车</button>
+      </div>
+
+      <div class="toast" id="toast"></div>
+      <div class="hint" id="hint" hidden>
+        <b>怎么玩：</b>从岸边锚点（螺栓）<b>按住拖到</b>邻近格点，放下一根构件。
+        先用<b>道路</b>把两岸铺通，再用<b>木材</b>在桥面下加三角桁架，然后<b>▶ 开始测试</b>让汽车驶过。
+        <span class="h-close" id="hintOk">知道了</span>
+      </div>
+
+      <div class="overlay" id="ovLevels">
+        <div class="ov-box">
+          <span class="tag">选择关卡</span>
+          <h2>关卡</h2>
+          <div class="lv-list" id="lvList"></div>
+          <div class="ov-btns">
+            <button class="btn" id="lvClose" type="button">关闭</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay" id="ovHelp">
+        <div class="ov-box">
+          <span class="tag">玩法说明</span>
+          <h2>造桥指南</h2>
+          <div class="help-cards">
+            <h4>目标</h4>
+            <p>在预算内搭建一座桥，让汽车从左岸安全驶到右岸终点旗。测试时构件会按受力变色，超过材料极限就会断裂。</p>
+            <h4>材料</h4>
+            <ul>
+              <li><span class="mat-line" style="background:#4a5568"></span><b>道路 ¥60/m</b>：唯一能行车的桥面，较重。</li>
+              <li><span class="mat-line" style="background:#a06a3a"></span><b>木材 ¥26/m</b>：便宜的支撑，强度一般。</li>
+              <li><span class="mat-line" style="background:#8ea3bd"></span><b>钢梁 ¥95/m</b>：最强构件，适合大跨度主力。</li>
+              <li><span class="mat-line" style="background:#d7dee8"></span><b>钢索 ¥38/m</b>：只能受拉不能受压，适合吊在高处锚点。</li>
+            </ul>
+            <h4>应力图例</h4>
+            <div class="stress-bar"></div>
+            <p style="text-align:center">绿 → 黄 → 红：越红越接近断裂</p>
+            <h4>技巧</h4>
+            <ul>
+              <li>三角形桁架最稳——把桥面下的斜撑连成三角，力才能传到两岸锚点。</li>
+              <li>光铺一层道路跨大跨度必然垮塌，桥面上下都要有结构。</li>
+              <li>钢索吊在高位锚点上，能把长跨中部「拎」起来。</li>
+              <li>星级按省钱程度评定：3★ ≤ 预算 72%，2★ ≤ 88%。</li>
+            </ul>
+            <h4>操作</h4>
+            <p>
+              桌面：<span class="kbd">1</span>~<span class="kbd">4</span> 选材料，<span class="kbd">E</span> 拆除，拖空白处平移视角，滚轮缩放，<span class="kbd">Space</span> 测试/返回，<span class="kbd">Z</span> 撤销，<span class="kbd">F</span> 适配视图。<br>
+              触屏：按住锚点/节点拖到目标格点；拖空白平移，双指缩放。
+            </p>
+          </div>
+          <div class="ov-btns">
+            <button class="btn" id="helpClose" type="button">开始造桥</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="overlay" id="ovEnd">
+        <div class="ov-box">
+          <span class="tag" id="endTag">检验结果</span>
+          <h2 id="endTitle">…</h2>
+          <div class="stars-big" id="endStars" hidden></div>
+          <p class="ov-kv" id="endInfo"></p>
+          <div class="ov-btns">
+            <button class="btn" id="endBuild" type="button">↩ 返回搭建</button>
+            <button class="btn" id="endRetry" type="button">⟳ 再试一次</button>
+            <button class="btn primary" id="endNext" type="button" hidden>下一关 →</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="credit">纯静态实现 · 零外部请求 · 物理在浏览器本地计算 · 进度保存在本机</footer>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    /* ============================================================
+       造桥 · Verlet 质点 + 距离约束的桁架物理
+       搭建：格点拖放构件（道路/木材/钢梁/钢索），预算约束；
+       测试：车辆驶过，构件按应力变色、超限断裂，通关计星。
+       ============================================================ */
+
+    // ---------- 可调物理参数 ----------
+    var PH = {
+      G: 10,          // 重力 m/s²
+      DT: 1 / 60,     // 固定步长
+      SUB: 4,         // 每帧子步
+      ITER: 8,        // 约束迭代
+      DAMP: 0.995,    // 每子步速度阻尼（吸收车辆碾压引起的振动）
+      MAXLEN: 4.6,    // 构件最大长度（格距 2m：允许 2 格直杆 4m 与 2×1 斜杆 4.47m）
+      SNAPR: 22       // 抓取节点的屏幕半径 px
+    };
+
+    var MATS = {
+      // alpha = 1/EA（XPBD 合规性）：数值越小越“硬”，应变=内力×alpha，真实反映荷载
+      road:  { id: 'road',  name: '道路', cost: 60, dens: 11,  alpha: 3.0e-6, lim: 0.030, thick: 0.36, road: true },
+      wood:  { id: 'wood',  name: '木材', cost: 26, dens: 3.5, alpha: 2.4e-6, lim: 0.037, thick: 0.22 },
+      steel: { id: 'steel', name: '钢梁', cost: 95, dens: 7,   alpha: 9e-7,   lim: 0.055, thick: 0.26 },
+      cable: { id: 'cable', name: '钢索', cost: 38, dens: 1.2, alpha: 1.3e-6, lim: 0.100, thick: 0.09, cable: true }
+    };
+    var MAT_ORDER = ['road', 'wood', 'steel', 'cable'];
+
+    var CARS = {
+      car:   { id: 'car',   name: '轿车', r: 0.55, wb: 2.3, h: 1.35, wm: 175, tm: 350, speed: 4.3, acc: 7 },
+      truck: { id: 'truck', name: '卡车', r: 0.70, wb: 3.6, h: 1.90, wm: 490, tm: 970, speed: 2.8, acc: 4.5 }
+    };
+
+    // ---------- 关卡（格点 i,j → 世界 x=2i, y=2j；y 向上） ----------
+    var LEVELS = [
+      {
+        id: 'l1', name: '新手峡谷', brief: '10 米小峡谷 · 轿车 · 学会用三角桁架',
+        budget: 1900, veh: 'car', spawn: -8, goal: 22, water: null,
+        terrain: [[-16, 0], [6, 0], [6, -10], [16, -10], [16, 0], [32, 0]],
+        anchors: [[3, 0], [8, 0], [3, -1], [8, -1]],
+        zones: [[1, -4, 10, 2]]
+      },
+      {
+        id: 'l2', name: '深谷飞架', brief: '14 米深谷 · 桥面上下都要有结构',
+        budget: 2600, veh: 'car', spawn: -10, goal: 26, water: -14,
+        terrain: [[-18, 0], [6, 0], [6, -16], [20, -16], [20, 0], [38, 0]],
+        anchors: [[3, 0], [10, 0], [3, -1], [10, -1]],
+        zones: [[1, -5, 12, 2]]
+      },
+      {
+        id: 'l3', name: '中央桥墩', brief: '24 米宽谷 · 利用谷中石台分跨',
+        budget: 4200, veh: 'car', spawn: -8, goal: 30, water: -10,
+        terrain: [[-18, 0], [0, 0], [0, -12], [10, -12], [10, -4], [18, -4], [18, -12], [24, -12], [24, 0], [40, 0]],
+        anchors: [[0, 0], [0, -1], [5, -2], [9, -2], [12, 0], [12, -1]],
+        zones: [[-1, -2, 13, 2], [-1, -4, 4, -3], [10, -4, 13, -3]]
+      },
+      {
+        id: 'l4', name: '悬崖吊桥', brief: '16 米峡谷 · 崖壁高位锚点适合钢索',
+        budget: 3000, veh: 'car', spawn: -8, goal: 24, water: -16,
+        terrain: [[-18, 0], [2, 0], [2, -18], [18, -18], [18, 0], [36, 0]],
+        anchors: [[1, 0], [9, 0], [1, 2], [9, 2]],
+        zones: [[0, -2, 10, 2]]
+      },
+      {
+        id: 'l5', name: '重载运输', brief: '14 米深谷 · 重卡碾压 · 结构要更壮',
+        budget: 4400, veh: 'truck', spawn: -10, goal: 26, water: -14,
+        terrain: [[-18, 0], [6, 0], [6, -16], [20, -16], [20, 0], [38, 0]],
+        anchors: [[3, 0], [10, 0], [3, -1], [10, -1]],
+        zones: [[1, -5, 12, 2]]
+      },
+      {
+        id: 'l6', name: '大峡谷', brief: '26 米大峡谷 + 谷中石台 · 重卡终极考验',
+        budget: 6400, veh: 'truck', spawn: -10, goal: 36, water: -18,
+        terrain: [[-20, 0], [4, 0], [4, -20], [14, -20], [14, -4], [20, -4], [20, -20], [30, -20], [30, 0], [46, 0]],
+        anchors: [[2, 0], [15, 0], [2, -1], [15, -1], [3, 0], [14, 0], [7, -2], [10, -2]],
+        zones: [[-1, -8, 6, 2], [7, -2, 10, 2], [11, -8, 16, 2]]
+      },
+      {
+        id: 'sb', name: '自由沙盒', brief: '无限预算 · 轿车/卡车随切 · 随便造',
+        budget: Infinity, sandbox: true, veh: 'car', spawn: -10, goal: 32, water: -14,
+        terrain: [[-20, 0], [6, 0], [6, -16], [26, -16], [26, 0], [44, 0]],
+        anchors: [[3, 0], [13, 0], [3, -1], [13, -1], [3, 2], [13, 2]],
+        zones: [[1, -6, 15, 3]]
+      }
+    ];
+    var REAL_LEVELS = 6; // 沙盒之前为正式关卡
+
+    // ---------- 小工具 ----------
+    function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+    function hyp(x, y) { return Math.sqrt(x * x + y * y); }
+    function nk(i, j) { return i + ',' + j; }
+    function fmtMoney(v) { return v === Infinity ? '∞' : ('¥' + Math.round(v)); }
+    function mixc(c1, c2, t) {
+      return 'rgb(' + Math.round(c1[0] + (c2[0] - c1[0]) * t) + ',' +
+        Math.round(c1[1] + (c2[1] - c1[1]) * t) + ',' +
+        Math.round(c1[2] + (c2[2] - c1[2]) * t) + ')';
+    }
+    var C_GREEN = [62, 207, 142], C_YEL = [232, 195, 75], C_RED = [255, 90, 90];
+    function stressColor(s) {
+      s = clamp(s, 0, 1);
+      return s < 0.5 ? mixc(C_GREEN, C_YEL, s * 2) : mixc(C_YEL, C_RED, (s - 0.5) * 2);
+    }
+
+    // ---------- DOM ----------
+    var $ = function (id) { return document.getElementById(id); };
+    var wrap = $('bwrap'), cv = $('cv'), ctx = cv.getContext('2d');
+    var elLvName = $('lvName'), elCost = $('costVal'), elBudget = $('budgetVal');
+    var elCostChip = $('costChip'), elMaxChip = $('maxChip'), elMaxVal = $('maxVal');
+    var buildBar = $('buildBar'), testBar = $('testBar');
+    var undoBtn = $('undoBtn'), clearBtn = $('clearBtn'), testBtn = $('testBtn');
+    var stopBtn = $('stopBtn'), retryBtn = $('retryBtn'), followBtn = $('followBtn'), slowBtn = $('slowBtn');
+    var carBtn = $('carBtn'), truckBtn = $('truckBtn'), vehSep = $('vehSep');
+    var ovLevels = $('ovLevels'), ovHelp = $('ovHelp'), ovEnd = $('ovEnd');
+    var hint = $('hint'), toastEl = $('toast');
+    var REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // ---------- 状态 ----------
+    var GRID = 2;
+    var levelIdx = 0, level = LEVELS[0], mode = 'build', tool = 'road';
+    var design = { nodes: new Map(), beams: [] }; // nodes: key -> {i,j,anchor}; beams: {a,b,mat}
+    var undoStack = [];
+    var cam = { x: 10, y: -3, s: 30 };
+    var W = 0, H = 0, DPR = 1;
+    var sim = null;
+    var dragFrom = null, dragTo = null, hoverBeamIdx = -1, hoverNodeKey = null;
+    var clearArmed = 0, toastTimer = 0, endTimer = 0;
+    var frameLast = 0, acc = 0;
+
+    // ---------- 存档 ----------
+    var LS_PROGRESS = 'games:bridge:progress', LS_DESIGN = 'games:bridge:design:', LS_SEEN = 'games:bridge:seen';
+    function loadProgress() {
+      try {
+        var p = JSON.parse(localStorage.getItem(LS_PROGRESS) || '');
+        if (p && typeof p === 'object') return { unlocked: p.unlocked | 0 || 1, lv: p.lv || {} };
+      } catch (e) {}
+      return { unlocked: 1, lv: {} };
+    }
+    function saveProgress(p) {
+      try { localStorage.setItem(LS_PROGRESS, JSON.stringify(p)); } catch (e) {}
+    }
+    var progress = loadProgress();
+
+    function serializeDesign() {
+      var n = [];
+      design.nodes.forEach(function (nd) { n.push([nd.i, nd.j, nd.anchor ? 1 : 0]); });
+      var b = design.beams.map(function (bm) { return [bm.a, bm.b, bm.mat]; });
+      return { n: n, b: b };
+    }
+    function deserializeDesign(d) {
+      var nd = new Map();
+      (d.n || []).forEach(function (r) { nd.set(nk(r[0], r[1]), { i: r[0], j: r[1], anchor: !!r[2] }); });
+      var bm = [];
+      (d.b || []).forEach(function (r) {
+        if (nd.has(r[0]) && nd.has(r[1]) && MATS[r[2]]) bm.push({ a: r[0], b: r[1], mat: r[2] });
+      });
+      return { nodes: nd, beams: bm };
+    }
+    function saveDesign() {
+      try { localStorage.setItem(LS_DESIGN + level.id, JSON.stringify(serializeDesign())); } catch (e) {}
+    }
+    function loadDesign() {
+      try {
+        var s = localStorage.getItem(LS_DESIGN + level.id);
+        if (s) return deserializeDesign(JSON.parse(s));
+      } catch (e) {}
+      return null;
+    }
+
+    // ---------- 设计操作 ----------
+    function nodeW(nd) { return { x: nd.i * GRID, y: nd.j * GRID }; }
+    function beamLen(aKey, bKey) {
+      // 直接按格点坐标计算（节点可能尚未创建，位置恒为格点位置）
+      var a = keyIJ(aKey), b = keyIJ(bKey);
+      return hyp(b[0] - a[0], b[1] - a[1]) * GRID;
+    }
+    function beamCost(len, matId) { return Math.round(len * MATS[matId].cost); }
+    function usedCost() {
+      var s = 0;
+      design.beams.forEach(function (bm) { s += beamCost(beamLen(bm.a, bm.b), bm.mat); });
+      return s;
+    }
+    function inZone(i, j) {
+      for (var z = 0; z < level.zones.length; z++) {
+        var zn = level.zones[z];
+        if (i >= zn[0] && i <= zn[2] && j >= zn[1] && j <= zn[3]) return true;
+      }
+      return false;
+    }
+    function keyIJ(key) { var p = key.split(','); return [+p[0], +p[1]]; }
+    // 端点可用：已有节点（含锚点）或在建造区内
+    function nodeAllowedKey(key) {
+      if (design.nodes.has(key)) return true;
+      var ij = keyIJ(key);
+      return inZone(ij[0], ij[1]);
+    }
+    function beamValid(aKey, bKey, matId) {
+      if (aKey === bKey) return { ok: false, why: '' };
+      if (!nodeAllowedKey(aKey) || !nodeAllowedKey(bKey)) return { ok: false, why: '超出建造区' };
+      for (var k = 0; k < design.beams.length; k++) {
+        var bm = design.beams[k];
+        if ((bm.a === aKey && bm.b === bKey) || (bm.a === bKey && bm.b === aKey)) return { ok: false, why: '此处已有构件' };
+      }
+      var len = beamLen(aKey, bKey);
+      if (len < 0.5) return { ok: false, why: '' };
+      if (len > PH.MAXLEN + 0.01) return { ok: false, why: '构件太长（最长约 2 格）' };
+      if (isFinite(level.budget) && usedCost() + beamCost(len, matId) > level.budget) return { ok: false, why: '预算不足' };
+      return { ok: true, cost: beamCost(len, matId), len: len };
+    }
+    function pushUndo() {
+      undoStack.push(JSON.stringify(serializeDesign()));
+      if (undoStack.length > 60) undoStack.shift();
+      undoBtn.disabled = false;
+    }
+    function tryPlaceBeam(aKey, bKey, matId, silent) {
+      var v = beamValid(aKey, bKey, matId);
+      if (!v.ok) { if (silent !== 'quiet' && v.why) toast(v.why); return false; }
+      pushUndo();
+      ensureNode.apply(null, keyIJ(aKey));
+      ensureNode.apply(null, keyIJ(bKey));
+      design.beams.push({ a: aKey, b: bKey, mat: matId });
+      afterDesignChange();
+      return true;
+    }
+    function deleteBeamAt(idx) {
+      if (idx < 0 || idx >= design.beams.length) return;
+      pushUndo();
+      design.beams.splice(idx, 1);
+      pruneOrphans();
+      afterDesignChange();
+    }
+    function pruneOrphans() {
+      var used = new Set();
+      design.beams.forEach(function (bm) { used.add(bm.a); used.add(bm.b); });
+      var del = [];
+      design.nodes.forEach(function (nd, key) {
+        if (!nd.anchor && !used.has(key)) del.push(key);
+      });
+      del.forEach(function (key) { design.nodes.delete(key); });
+    }
+    function afterDesignChange() {
+      refreshBudget();
+      saveDesign();
+      if (!design.beams.length && hint.hidden === false) { /* 留着提示 */ }
+    }
+    function doUndo() {
+      if (!undoStack.length) return;
+      design = deserializeDesign(JSON.parse(undoStack.pop()));
+      undoBtn.disabled = !undoStack.length;
+      refreshBudget();
+      saveDesign();
+    }
+    function clearDesign() {
+      if (!design.beams.length) return;
+      pushUndo();
+      design.beams = [];
+      var del = [];
+      design.nodes.forEach(function (nd, key) { if (!nd.anchor) del.push(key); });
+      del.forEach(function (key) { design.nodes.delete(key); });
+      afterDesignChange();
+    }
+    function refreshBudget() {
+      var used = usedCost();
+      elCost.textContent = fmtMoney(used);
+      elBudget.textContent = fmtMoney(level.budget);
+      var r = isFinite(level.budget) ? used / level.budget : 0;
+      elCostChip.classList.toggle('warn', r > 0.85);
+      elCostChip.classList.toggle('hi', r > 0 && r <= 0.85);
+    }
+
+    // ---------- 坐标 ----------
+    function w2sx(wx) { return (wx - cam.x) * cam.s + W / 2; }
+    function w2sy(wy) { return H / 2 - (wy - cam.y) * cam.s; }
+    function s2wx(sx) { return (sx - W / 2) / cam.s + cam.x; }
+    function s2wy(sy) { return (H / 2 - sy) / cam.s + cam.y; }
+
+    // ---------- 关卡 ----------
+    function loadLevel(idx) {
+      levelIdx = clamp(idx, 0, LEVELS.length - 1);
+      level = LEVELS[levelIdx];
+      design = { nodes: new Map(), beams: [] };
+      level.anchors.forEach(function (a) { design.nodes.set(nk(a[0], a[1]), { i: a[0], j: a[1], anchor: true }); });
+      var saved = loadDesign();
+      if (saved) {
+        // 保留锚点，叠加存档
+        saved.nodes.forEach(function (nd, key) { if (!design.nodes.has(key)) design.nodes.set(key, nd); });
+        design.beams = saved.beams;
+      }
+      undoStack = []; undoBtn.disabled = true;
+      level.tseg = [];
+      for (var k = 0; k < level.terrain.length - 1; k++) {
+        var p = level.terrain[k], q = level.terrain[k + 1];
+        level.tseg.push([p[0], p[1], q[0], q[1]]);
+      }
+      var minY = 0;
+      level.terrain.forEach(function (p) { minY = Math.min(minY, p[1]); });
+      level.killY = minY - 4;
+      stopTest(true);
+      mode = 'build';
+      syncBars();
+      elLvName.textContent = '第 ' + (levelIdx + 1) + ' 关 · ' + level.name;
+      if (level.sandbox) elLvName.textContent = '自由沙盒';
+      refreshBudget();
+      fitView();
+      hideOverlays();
+      var best = progress.lv[level.id];
+      toast(level.sandbox ? '自由沙盒 · 无限预算，随便造' :
+        (levelIdx + 1) + ' · ' + level.name + ' — 预算 ' + fmtMoney(level.budget) +
+        (best ? '（最佳 ' + '★'.repeat(best.stars) + ' ' + fmtMoney(best.cost) + '）' : ''), 2600);
+      try { if (!JSON.parse(localStorage.getItem(LS_SEEN) || '0') && levelIdx === 0) hint.hidden = false; } catch (e) {}
+      buildLevelList();
+    }
+
+    // ---------- 视图 ----------
+    function fitView() {
+      var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+      level.zones.forEach(function (z) {
+        minX = Math.min(minX, z[0] * GRID); maxX = Math.max(maxX, z[2] * GRID);
+        minY = Math.min(minY, z[1] * GRID); maxY = Math.max(maxY, z[3] * GRID);
+      });
+      level.anchors.forEach(function (a) {
+        minX = Math.min(minX, a[0] * GRID); maxX = Math.max(maxX, a[0] * GRID);
+        minY = Math.min(minY, a[1] * GRID); maxY = Math.max(maxY, a[1] * GRID);
+      });
+      // 起点与终点旗也纳入视野，保证开局就能看到全貌
+      minX = Math.min(minX, level.spawn - 1); maxX = Math.max(maxX, level.goal + 1);
+      var pad = 3;
+      var w = maxX - minX + pad * 2, h = maxY - minY + pad * 2;
+      cam.s = clamp(Math.min(W / w, H / h), 10, 90);
+      cam.x = (minX + maxX) / 2;
+      cam.y = (minY + maxY) / 2;
+    }
+    function zoomAt(sx, sy, factor) {
+      var wx = s2wx(sx), wy = s2wy(sy);
+      cam.s = clamp(cam.s * factor, 10, 90);
+      cam.x = wx - (sx - W / 2) / cam.s;
+      cam.y = wy + (sy - H / 2) / cam.s;
+    }
+
+    // ============================================================
+    // 物理：Verlet 质点 + 距离约束
+    // ============================================================
+    function startTest() {
+      if (!design.beams.length) { toast('先搭点东西再测试吧'); return; }
+      mode = 'test';
+      hint.hidden = true;
+      var nodes = [], byKey = {};
+      design.nodes.forEach(function (nd, key) {
+        var sn = { x: nd.i * GRID, y: nd.j * GRID, px: nd.i * GRID, py: nd.j * GRID, invM: 1, fixed: !!nd.anchor, key: key };
+        nodes.push(sn); byKey[key] = sn;
+      });
+      var beams = design.beams.map(function (bm) {
+        var na = byKey[bm.a], nb = byKey[bm.b];
+        return { na: na, nb: nb, mat: MATS[bm.mat], rest: hyp(nb.x - na.x, nb.y - na.y), broken: false, stress: 0 };
+      });
+      sim = {
+        nodes: nodes, beams: beams, parts: [],
+        t: 0, status: 'settle', timeScale: slowOn ? 0.35 : 1,
+        settleT: 1.0, follow: true, shake: 0,
+        veh: makeVehicle(level.veh),
+        stuckX: level.spawn, stuckT: 0, dust: 0
+      };
+      computeMasses();
+      syncBars();
+      elMaxChip.hidden = false;
+      hideOverlays();
+    }
+    function stopTest(silent) {
+      if (endTimer) { clearTimeout(endTimer); endTimer = 0; }
+      sim = null;
+      mode = 'build';
+      syncBars();
+      elMaxChip.hidden = true;
+      if (!silent) refreshBudget();
+    }
+    function makeVehicle(kind) {
+      var V = CARS[kind] || CARS.car;
+      var y0 = V.r + 0.02;
+      function P(x, y, m) { return { x: x, y: y, px: x, py: y, invM: 1 / m, contact: false, rot: 0, rotAcc: 0 }; }
+      var w1 = P(level.spawn - V.wb / 2, y0, V.wm);
+      var w2 = P(level.spawn + V.wb / 2, y0, V.wm);
+      var top = P(level.spawn, y0 + V.h, V.tm);
+      w1.isWheel = w2.isWheel = true;
+      var c12 = hyp(w2.x - w1.x, w2.y - w1.y);
+      var c1t = hyp(top.x - w1.x, top.y - w1.y);
+      var c2t = hyp(top.x - w2.x, top.y - w2.y);
+      return {
+        V: V, w1: w1, w2: w2, top: top, wheels: [w1, w2], pts: [w1, w2, top],
+        cons: [[w1, w2, c12], [w1, top, c1t], [w2, top, c2t]]
+      };
+    }
+    function computeMasses() {
+      sim.nodes.forEach(function (n) { n.m = n.fixed ? Infinity : 2; });
+      sim.beams.forEach(function (b) {
+        if (b.broken) return;
+        var m = b.rest * b.mat.dens / 2;
+        b.na.m += m; b.nb.m += m;
+      });
+      sim.nodes.forEach(function (n) { n.invM = isFinite(n.m) ? 1 / n.m : 0; });
+    }
+    var CUR_DAMP = PH.DAMP; // 静置沉降阶段临时提高阻尼
+    function integrate(n, h) {
+      if (n.invM === 0) return;
+      var vx = (n.x - n.px) * CUR_DAMP, vy = (n.y - n.py) * CUR_DAMP;
+      n.px = n.x; n.py = n.y;
+      n.x += vx; n.y += vy - PH.G * h * h;
+    }
+    function solveDist(a, b, rest, k) {
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var len = hyp(dx, dy);
+      if (len < 1e-9) return;
+      var w = a.invM + b.invM;
+      if (w === 0) return;
+      var diff = (len - rest) / len * k;
+      var fa = a.invM / w, fb = b.invM / w;
+      a.x += dx * diff * fa; a.y += dy * diff * fa;
+      b.x -= dx * diff * fb; b.y -= dy * diff * fb;
+    }
+    // XPBD 距离约束：内力真实反映荷载，应变 = 内力 × alpha
+    function solveBeam(b, h) {
+      var nx = b.na.x - b.nb.x, ny = b.na.y - b.nb.y;
+      var len = hyp(nx, ny);
+      if (len < 1e-9) return;
+      var C = len - b.rest;
+      if (b.mat.cable && C < 0) { b.lam = 0; b.stress = 0; return; } // 钢索不受压
+      var strain = C / b.rest;
+      b.stress = Math.abs(strain) / b.mat.lim;
+      var w = b.na.invM + b.nb.invM;
+      var at = b.mat.alpha / (h * h);
+      var denom = w + at;
+      if (denom <= 1e-12) return;
+      var dlam = (-C - at * b.lam) / denom;
+      b.lam += dlam;
+      nx /= len; ny /= len;
+      b.na.x += nx * dlam * b.na.invM; b.na.y += ny * dlam * b.na.invM;
+      b.nb.x -= nx * dlam * b.nb.invM; b.nb.y -= ny * dlam * b.nb.invM;
+    }
+    // 圆点 vs 线段碰撞（位置修正 + 切向摩擦）
+    function collideCircle(p, ax, ay, bx, by, r, fr, capPen) {
+      var abx = bx - ax, aby = by - ay;
+      var L2 = abx * abx + aby * aby;
+      if (L2 < 1e-12) return false;
+      var t = clamp(((p.x - ax) * abx + (p.y - ay) * aby) / L2, 0, 1);
+      var qx = ax + abx * t, qy = ay + aby * t;
+      var dx = p.x - qx, dy = p.y - qy;
+      var d = hyp(dx, dy);
+      if (d >= r || d < 1e-9) return false;
+      var pen = r - d;
+      if (capPen !== undefined && pen > capPen) return false; // 深埋（建在岩石里），忽略
+      var nx = dx / d, ny = dy / d;
+      p.x += nx * pen; p.y += ny * pen;
+      var tx = -ny, ty = nx;
+      var vx = p.x - p.px, vy = p.y - p.py;
+      var vt = vx * tx + vy * ty;
+      p.px += tx * vt * fr; p.py += ty * vt * fr;
+      return true;
+    }
+    // 车轮 vs 桥面构件：双向碰撞——车重按质量分配传入梁端节点（荷载来源）
+    function collideWheelSeg(w, A, B, r) {
+      var abx = B.x - A.x, aby = B.y - A.y;
+      var L2 = abx * abx + aby * aby;
+      if (L2 < 1e-12) return false;
+      var t = clamp(((w.x - A.x) * abx + (w.y - A.y) * aby) / L2, 0, 1);
+      var qx = A.x + abx * t, qy = A.y + aby * t;
+      var dx = w.x - qx, dy = w.y - qy;
+      var d = hyp(dx, dy);
+      if (d >= r || d < 1e-9) return false;
+      var pen = r - d;
+      var nx = dx / d, ny = dy / d;
+      var wq = (1 - t) * A.invM + t * B.invM;   // 接触点的近似广义质量
+      var wsum = w.invM + wq;
+      if (wsum <= 0) return false;
+      var lam = pen / wsum;
+      w.x += nx * lam * w.invM; w.y += ny * lam * w.invM;
+      A.x -= nx * lam * (1 - t) * A.invM; A.y -= ny * lam * (1 - t) * A.invM;
+      B.x -= nx * lam * t * B.invM;       B.y -= ny * lam * t * B.invM;
+      return true;
+    }
+    var WHEEL_FR = 0.004;  // 车轮滚动摩擦（按子步长换算，约 1 m/s² 量级的滚动阻力）
+    var NODE_FR = 0.3;     // 落地构件残骸摩擦（让它尽快停住）
+    function collide(h) {
+      var veh = sim.veh;
+      veh.wheels.forEach(function (w) {
+        w.contact = false;
+        var rr = veh.V.r + 0.18;
+        sim.beams.forEach(function (b) {
+          if (b.broken || !b.mat.road) return;
+          if (collideWheelSeg(w, b.na, b.nb, rr)) w.contact = true;
+        });
+        level.tseg.forEach(function (s) {
+          if (collideCircle(w, s[0], s[1], s[2], s[3], veh.V.r, WHEEL_FR)) w.contact = true;
+        });
+      });
+      sim.nodes.forEach(function (n) {
+        if (n.fixed) return;
+        level.tseg.forEach(function (s) {
+          collideCircle(n, s[0], s[1], s[2], s[3], 0.18, NODE_FR, 1.2);
+        });
+      });
+    }
+    function drive(h) {
+      var veh = sim.veh;
+      if (sim.status !== 'run') return; // 静置/结束阶段不驱动
+      // 目标速度的比例控制：触地时把每子步位移推向 target，增益区分车型（卡车起步更沉）
+      var gain = veh.V.id === 'truck' ? 0.03 : 0.045;
+      var target = veh.V.speed * h;
+      veh.wheels.forEach(function (w) {
+        if (!w.contact) return;
+        var vdisp = w.x - w.px;
+        if (vdisp < target) w.x += (target - vdisp) * gain;
+      });
+    }
+    function stepPhysics(dt) {
+      var SUB = PH.SUB, h = dt / SUB;
+      var veh = sim.veh;
+      var settling = sim.status === 'settle';
+      CUR_DAMP = settling ? 0.95 : PH.DAMP; // 静置阶段强阻尼，快速消除初始振荡
+      for (var s = 0; s < SUB; s++) {
+        sim.nodes.forEach(function (n) { integrate(n, h); });
+        if (!settling) veh.pts.forEach(function (p) { integrate(p, h); });
+        sim.beams.forEach(function (b) { b.lam = 0; }); // XPBD λ 每子步重置
+        for (var it = 0; it < PH.ITER; it++) {
+          sim.beams.forEach(function (b) { if (!b.broken) solveBeam(b, h); });
+          if (!settling) veh.cons.forEach(function (c) { solveDist(c[0], c[1], c[2], 1); });
+        }
+        if (!settling) collide(h);
+        drive(h);
+      }
+      veh.wheels.forEach(function (w) { w.rot += (w.x - w.px) / veh.V.r; });
+      // 断裂检测（碰撞后按最终状态测量应力；静置沉降阶段豁免——初始冲击是数值伪影）
+      var broke = false;
+      if (settling) {
+        sim.beams.forEach(function (b) {
+          if (b.broken) return;
+          var len = hyp(b.nb.x - b.na.x, b.nb.y - b.na.y);
+          var strain = (len - b.rest) / b.rest;
+          if (!(b.mat.cable && strain < 0)) b.stress = Math.abs(strain) / b.mat.lim;
+        });
+        return;
+      }
+      sim.beams.forEach(function (b) {
+        if (b.broken) return;
+        var len = hyp(b.nb.x - b.na.x, b.nb.y - b.na.y);
+        var strain = (len - b.rest) / b.rest;
+        if (!(b.mat.cable && strain < 0)) b.stress = Math.abs(strain) / b.mat.lim;
+        var over = b.mat.cable ? strain > b.mat.lim : Math.abs(strain) > b.mat.lim;
+        if (over) { breakBeam(b); broke = true; }
+      });
+      if (broke) { computeMasses(); if (!REDUCED) sim.shake = Math.min(1, sim.shake + 0.5); }
+      // 尘土（装饰）
+      if (!REDUCED && sim.status === 'run') {
+        sim.dust += dt;
+        if (sim.dust > 0.06) {
+          sim.dust = 0;
+          veh.wheels.forEach(function (w) {
+            if (w.contact && Math.abs(w.x - w.px) > 0.01) {
+              sim.parts.push({ x: w.x - 0.2, y: w.y - veh.V.r + 0.08, px: w.x - 0.25, py: w.y - veh.V.r + 0.1, life: 0.5, size: 2.5, col: '150,150,160', fade: 0.9 });
+            }
+          });
+        }
+      }
+      // 粒子
+      for (var k = sim.parts.length - 1; k >= 0; k--) {
+        var p = sim.parts[k];
+        var vx2 = (p.x - p.px) * 0.99, vy2 = (p.y - p.py) * 0.99;
+        p.px = p.x; p.py = p.y;
+        p.x += vx2; p.y += vy2 - PH.G * h * h;
+        p.life -= h * 4;
+        if (p.life <= 0) sim.parts.splice(k, 1);
+      }
+      sim.shake *= 0.9;
+    }
+    function breakBeam(b) {
+      b.broken = true;
+      var col = b.mat.id === 'wood' ? '160,106,58' : b.mat.id === 'steel' ? '142,163,189' : b.mat.id === 'cable' ? '215,222,232' : '74,85,104';
+      var n = Math.max(3, Math.min(7, Math.round(b.rest)));
+      for (var k = 0; k < n; k++) {
+        var t = (k + 0.5) / n;
+        var x = b.na.x + (b.nb.x - b.na.x) * t, y = b.na.y + (b.nb.y - b.na.y) * t;
+        sim.parts.push({
+          x: x, y: y, px: x - (Math.random() - 0.5) * 0.06, py: y + Math.random() * 0.04,
+          life: 0.9 + Math.random() * 0.5, size: 2 + Math.random() * 3, col: col, fade: 0.6
+        });
+      }
+    }
+    function stepSim(dt) {
+      stepPhysics(dt * sim.timeScale);
+      if (sim.status === 'settle') {
+        sim.settleT -= dt;
+        if (sim.settleT <= 0) sim.status = 'run';
+      } else {
+        sim.t += dt * sim.timeScale;
+        if (sim.status === 'run') checkOutcome();
+      }
+      // 相机跟随
+      if (sim.follow) {
+        var veh = sim.veh;
+        var tx = (veh.w1.x + veh.w2.x) / 2, ty = (veh.w1.y + veh.w2.y) / 2;
+        cam.x += (tx - cam.x) * 0.08;
+        cam.y += (ty - cam.y) * 0.08;
+      }
+      // 荷载芯片
+      var mx = 0;
+      sim.beams.forEach(function (b) { if (!b.broken && b.stress > mx) mx = b.stress; });
+      sim.peak = Math.max(sim.peak || 0, mx);
+      elMaxVal.textContent = Math.round(clamp(mx, 0, 1.2) * 100) + '%';
+    }
+    function checkOutcome() {
+      var veh = sim.veh;
+      var midX = (veh.w1.x + veh.w2.x) / 2;
+      if (midX > level.goal) return finish('win');
+      for (var k = 0; k < veh.pts.length; k++) {
+        if (veh.pts[k].y < level.killY) return finish('fall');
+      }
+      if (sim.t > 3.5) {
+        if (veh.w2.x - sim.stuckX < 0.02) sim.stuckT += PH.DT * sim.timeScale;
+        else { sim.stuckT = 0; sim.stuckX = veh.w2.x; }
+        if (sim.stuckT > 3.5) return finish('stuck');
+      }
+      if (sim.t > 45) return finish('timeout');
+    }
+    var TIPS = [
+      '试试把桥面下的斜撑连成三角形，桁架才稳。',
+      '钢索只能受拉——吊在高位锚点上拉住桥面中部。',
+      '道路必须从左岸锚点连续铺到右岸锚点。',
+      '大跨度优先用钢梁做主力，木材做次要支撑。',
+      '桥面下加一层下弦杆 + 斜腹杆，力就能传到两岸。',
+      '重卡比轿车重一倍多，结构余量要留足。'
+    ];
+    function finish(kind) {
+      if (sim.status !== 'run') return;
+      sim.status = kind;
+      var used = usedCost();
+      var title, info = '', stars = 0;
+      if (kind === 'win') {
+        var r = isFinite(level.budget) ? used / level.budget : 0;
+        stars = level.sandbox ? 0 : (r <= 0.72 ? 3 : r <= 0.88 ? 2 : 1);
+        title = level.sandbox ? '🎉 通车成功' : '🎉 通车成功！';
+        info = '造价 <b>' + fmtMoney(used) + '</b> / 预算 ' + fmtMoney(level.budget) +
+          (level.sandbox ? '' : '（用掉 ' + Math.round(r * 100) + '%）');
+        if (!level.sandbox) {
+          var best = progress.lv[level.id];
+          var isNew = !best || stars > best.stars || (stars === best.stars && used < best.cost);
+          if (isNew) progress.lv[level.id] = { stars: stars, cost: used };
+          if (levelIdx < REAL_LEVELS - 1) progress.unlocked = Math.max(progress.unlocked, levelIdx + 2);
+          saveProgress(progress);
+          buildLevelList();
+          info += '<br>' + (isNew ? '<b style="color:var(--acc2)">★ 新纪录！</b>' : '本关最佳 ' + '★'.repeat(progress.lv[level.id].stars) + ' · ' + fmtMoney(progress.lv[level.id].cost));
+        }
+      } else {
+        title = '💥 桥塌了';
+        if (kind === 'fall') { title = '💫 车辆坠落'; info = '车掉进了深渊。'; }
+        else if (kind === 'stuck') { title = '🚧 车辆卡住'; info = '车没能前进——桥面断了或有台阶。'; }
+        else info = '超时未通过。';
+        info += '<br>提示：' + TIPS[Math.floor(Math.random() * TIPS.length)];
+      }
+      endTimer = setTimeout(function () {
+        $('endTitle').textContent = title;
+        $('endInfo').innerHTML = info;
+        var es = $('endStars');
+        if (kind === 'win' && !level.sandbox) {
+          es.hidden = false;
+          es.innerHTML = '<span>' + '★'.repeat(stars) + '</span><span class="off">' + '☆'.repeat(3 - stars) + '</span>';
+        } else es.hidden = true;
+        $('endTag').textContent = kind === 'win' ? '检验通过' : '检验失败';
+        var next = $('endNext');
+        next.hidden = !(kind === 'win' && !level.sandbox && levelIdx < REAL_LEVELS - 1);
+        showOverlay(ovEnd);
+      }, 700);
+    }
+
+    // ============================================================
+    // 渲染
+    // ============================================================
+    function resize() {
+      var r = wrap.getBoundingClientRect();
+      if (r.width < 10 || r.height < 10) return; // 面板隐藏/折叠时保持原尺寸，避免画布被清空
+      W = r.width; H = r.height;
+      DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+      cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    var STARS_BG = [];
+    for (var si = 0; si < 90; si++) {
+      STARS_BG.push([Math.random(), Math.random() * 0.55, Math.random() * 1.3 + 0.4, Math.random() * 6.28]);
+    }
+    function hillY(x, seed) {
+      return Math.sin(x * 0.045 + seed) * 0.62 + Math.sin(x * 0.13 + seed * 2.1) * 0.27 + Math.sin(x * 0.31 + seed * 0.7) * 0.11;
+    }
+    function drawHills(par, amp, base, col, seed) {
+      var step = 18;
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (var sx = 0; sx <= W + step; sx += step) {
+        var wx = cam.x * (1 - par) + s2wx(sx) * par;
+        var wy = base + hillY(wx, seed) * amp;
+        ctx.lineTo(sx, w2sy(wy));
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.fill();
+    }
+    function drawWater(now) {
+      if (level.water === null || level.water === undefined) return;
+      var y = w2sy(level.water);
+      if (y > H + 40) return;
+      ctx.fillStyle = 'rgba(56, 124, 186, 0.16)';
+      ctx.fillRect(0, y, W, H - y + 10);
+      ctx.strokeStyle = 'rgba(120, 190, 240, 0.32)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (var sx = 0; sx <= W; sx += 8) {
+        var yy = y + (REDUCED ? 0 : Math.sin(sx * 0.045 + now * 0.0016) * 2);
+        sx === 0 ? ctx.moveTo(sx, yy) : ctx.lineTo(sx, yy);
+      }
+      ctx.stroke();
+    }
+    function drawTerrain() {
+      var pts = level.terrain;
+      var bot = s2wy(H) - 2;
+      ctx.beginPath();
+      ctx.moveTo(w2sx(pts[0][0]), w2sy(pts[0][1]));
+      for (var k = 1; k < pts.length; k++) ctx.lineTo(w2sx(pts[k][0]), w2sy(pts[k][1]));
+      ctx.lineTo(w2sx(pts[pts.length - 1][0]), H + 40);
+      ctx.lineTo(w2sx(pts[0][0]), H + 40);
+      ctx.closePath();
+      var tg = ctx.createLinearGradient(0, 0, 0, H);
+      tg.addColorStop(0, '#243348');
+      tg.addColorStop(1, '#0f1926');
+      ctx.fillStyle = tg;
+      ctx.fill();
+      // 顶部亮边 + 表层柔光带（让岩体轮廓清晰可读）
+      ctx.beginPath();
+      ctx.moveTo(w2sx(pts[0][0]), w2sy(pts[0][1]));
+      for (k = 1; k < pts.length; k++) ctx.lineTo(w2sx(pts[k][0]), w2sy(pts[k][1]));
+      ctx.strokeStyle = 'rgba(96, 126, 156, 0.32)';
+      ctx.lineWidth = 12;
+      ctx.stroke();
+      ctx.strokeStyle = '#5d7b96';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+    function drawFlag(now) {
+      var x = w2sx(level.goal), y0 = w2sy(0);
+      ctx.strokeStyle = '#c9d6e2';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 - 2.6 * cam.s); ctx.stroke();
+      var wob = REDUCED ? 0 : Math.sin(now * 0.004) * 0.14;
+      ctx.fillStyle = '#4df0d8';
+      ctx.beginPath();
+      ctx.moveTo(x, y0 - 2.6 * cam.s);
+      ctx.lineTo(x + 1.3 * cam.s, y0 - 2.25 * cam.s + wob * cam.s);
+      ctx.lineTo(x, y0 - 1.9 * cam.s);
+      ctx.closePath();
+      ctx.fill();
+      // 起点箭头
+      var sx = w2sx(level.spawn);
+      var cs = Math.max(1, cam.s * 0.35);
+      ctx.strokeStyle = 'rgba(232, 176, 75, 0.9)';
+      ctx.lineWidth = Math.max(2.5, cs * 0.16);
+      for (var k = 0; k < 2; k++) {
+        ctx.beginPath();
+        ctx.moveTo(sx - 0.6 * cs + k * cs, y0 - 1.8 * cs);
+        ctx.lineTo(sx + 0.45 * cs + k * cs, y0 - 0.9 * cs);
+        ctx.lineTo(sx - 0.6 * cs + k * cs, y0);
+        ctx.stroke();
+      }
+    }
+    function drawGridDots() {
+      ctx.fillStyle = 'rgba(205, 232, 227, 0.22)';
+      var r = Math.max(1.2, cam.s * 0.045);
+      level.zones.forEach(function (z) {
+        for (var i = z[0]; i <= z[2]; i++) {
+          for (var j = z[1]; j <= z[3]; j++) {
+            var sx = w2sx(i * GRID), sy = w2sy(j * GRID);
+            if (sx < -8 || sx > W + 8 || sy < -8 || sy > H + 8) continue;
+            ctx.beginPath(); ctx.arc(sx, sy, r, 0, 6.29); ctx.fill();
+          }
+        }
+      });
+      // 悬停/拖放目标格点
+      var tgt = dragTo || null;
+      if (dragFrom && tgt && tgt.zone) {
+        var sx = w2sx(tgt.i * GRID), sy = w2sy(tgt.j * GRID);
+        ctx.strokeStyle = 'rgba(77, 240, 216, 0.9)';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(sx, sy, 7, 0, 6.29); ctx.stroke();
+      }
+    }
+    function segScreen(a, b) {
+      return [w2sx(a.i * GRID), w2sy(a.j * GRID), w2sx(b.i * GRID), w2sy(b.j * GRID)];
+    }
+    function drawBeamStyle(s, matId, stress, alpha, isHover) {
+      var m = MATS[matId];
+      var lw = Math.max(2.5, m.thick * cam.s);
+      ctx.globalAlpha = alpha;
+      ctx.lineCap = 'round';
+      if (matId === 'road') {
+        ctx.strokeStyle = isHover ? '#6b7686' : '#2c3542';
+        ctx.lineWidth = lw;
+        ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+        ctx.strokeStyle = 'rgba(232, 176, 74, 0.65)';
+        ctx.lineWidth = Math.max(1, lw * 0.12);
+        ctx.setLineDash([cam.s * 0.5, cam.s * 0.42]);
+        ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (matId === 'wood') {
+        ctx.strokeStyle = isHover ? '#c98d55' : '#96683c';
+        ctx.lineWidth = lw;
+        ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+        ctx.strokeStyle = 'rgba(222, 168, 110, 0.5)';
+        ctx.lineWidth = lw * 0.4;
+        ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+      } else if (matId === 'steel') {
+        ctx.strokeStyle = isHover ? '#c3d3e8' : '#8ea3bd';
+        ctx.lineWidth = lw;
+        ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+        ctx.fillStyle = '#c8d6e8';
+        var rd = Math.max(1.4, lw * 0.22);
+        ctx.beginPath(); ctx.arc(s[0], s[1], rd, 0, 6.29); ctx.fill();
+        ctx.beginPath(); ctx.arc(s[2], s[3], rd, 0, 6.29); ctx.fill();
+      } else { // cable
+        ctx.strokeStyle = isHover ? '#ffffff' : '#cfd8e2';
+        ctx.lineWidth = Math.max(1.4, m.thick * cam.s);
+        ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+      }
+      // 应力着色（测试模式）
+      if (stress !== null && stress > 0.03) {
+        ctx.strokeStyle = stressColor(stress);
+        ctx.globalAlpha = alpha * (0.3 + 0.65 * clamp(stress, 0, 1));
+        ctx.lineWidth = lw * 0.92;
+        ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    function drawAnchors() {
+      design.nodes.forEach(function (nd) {
+        if (!nd.anchor) return;
+        var x = w2sx(nd.i * GRID), y = w2sy(nd.j * GRID);
+        var r = Math.max(5, 0.3 * cam.s);
+        ctx.fillStyle = '#22303f';
+        ctx.strokeStyle = '#9fb4c8';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 6.29); ctx.fill(); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.45, y - r * 0.45); ctx.lineTo(x + r * 0.45, y + r * 0.45);
+        ctx.moveTo(x + r * 0.45, y - r * 0.45); ctx.lineTo(x - r * 0.45, y + r * 0.45);
+        ctx.stroke();
+      });
+    }
+    function drawNodesBuild() {
+      ctx.fillStyle = 'rgba(232, 246, 243, 0.6)';
+      design.nodes.forEach(function (nd) {
+        if (nd.anchor) return;
+        var x = w2sx(nd.i * GRID), y = w2sy(nd.j * GRID);
+        ctx.beginPath(); ctx.arc(x, y, 2.6, 0, 6.29); ctx.fill();
+      });
+      if (hoverNodeKey && !dragFrom) {
+        var nd = design.nodes.get(hoverNodeKey);
+        if (nd && !nd.anchor) {
+          ctx.strokeStyle = 'rgba(77, 240, 216, 0.9)';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.arc(w2sx(nd.i * GRID), w2sy(nd.j * GRID), 8, 0, 6.29); ctx.stroke();
+        }
+      }
+    }
+    function drawPreview() {
+      if (!dragFrom || !dragTo) return;
+      var a = design.nodes.get(dragFrom);
+      if (!a) return;
+      var v = beamValid(dragFrom, nk(dragTo.i, dragTo.j), tool === 'del' ? 'road' : tool);
+      var x1 = w2sx(a.i * GRID), y1 = w2sy(a.j * GRID);
+      var x2 = w2sx(dragTo.i * GRID), y2 = w2sy(dragTo.j * GRID);
+      var ok = v.ok;
+      ctx.setLineDash([7, 6]);
+      ctx.strokeStyle = ok ? (MATS[tool] ? '#4df0d8' : '#ff7b72') : '#ff7b72';
+      ctx.lineWidth = Math.max(2.5, (MATS[tool] ? MATS[tool].thick : 0.3) * cam.s);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.setLineDash([]);
+      // 标签
+      var lx = (x1 + x2) / 2, ly = (y1 + y2) / 2 - 12;
+      var label = ok ? (MATS[tool].name + ' ¥' + v.cost) : (v.why || '');
+      ctx.font = '11px ' + 'ui-monospace, Menlo, monospace';
+      var tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(8, 18, 28, 0.85)';
+      roundRect(lx - tw / 2 - 6, ly - 10, tw + 12, 18, 6);
+      ctx.fill();
+      ctx.fillStyle = ok ? '#8cf7e8' : '#ff9b94';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, lx, ly);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+    function drawVehicle(veh) {
+      var V = veh.V;
+      var ang = Math.atan2(veh.w2.y - veh.w1.y, veh.w2.x - veh.w1.x);
+      var mx = (veh.w1.x + veh.w2.x) / 2, my = (veh.w1.y + veh.w2.y) / 2;
+      var cx = w2sx(mx), cy = w2sy(my);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-ang);
+      ctx.scale(cam.s, -cam.s); // 之后按“米”绘制，y 向上
+      var L = V.wb + 0.7;
+      ctx.lineWidth = 0.05;
+      if (V.id === 'car') {
+        // 车身
+        ctx.fillStyle = '#e8b04b';
+        ctx.strokeStyle = '#8a6320';
+        ctx.beginPath();
+        ctx.moveTo(-L / 2, 0.16); ctx.lineTo(-L / 2 - 0.08, 0.62);
+        ctx.lineTo(-0.75, 0.68); ctx.lineTo(-0.42, 1.22);
+        ctx.lineTo(0.5, 1.22); ctx.lineTo(0.85, 0.66);
+        ctx.lineTo(L / 2, 0.6); ctx.lineTo(L / 2 + 0.07, 0.2);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        // 车窗
+        ctx.fillStyle = '#101d2b';
+        ctx.beginPath();
+        ctx.moveTo(-0.52, 0.72); ctx.lineTo(-0.32, 1.08); ctx.lineTo(0.38, 1.08); ctx.lineTo(0.6, 0.72);
+        ctx.closePath(); ctx.fill();
+        // 大灯
+        ctx.fillStyle = '#ffe9a8';
+        ctx.beginPath(); ctx.arc(L / 2 + 0.02, 0.42, 0.07, 0, 6.29); ctx.fill();
+      } else {
+        // 货箱
+        ctx.fillStyle = '#5c6b7d';
+        ctx.strokeStyle = '#2f3945';
+        ctx.beginPath();
+        ctx.rect(-L / 2, 0.15, L * 0.68, 1.62);
+        ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+        ctx.beginPath();
+        for (var k = 1; k < 4; k++) {
+          ctx.moveTo(-L / 2, 0.15 + k * 0.4); ctx.lineTo(-L / 2 + L * 0.68, 0.15 + k * 0.4);
+        }
+        ctx.stroke();
+        // 驾驶室
+        ctx.fillStyle = '#3ecfae';
+        ctx.strokeStyle = '#1d7a63';
+        ctx.beginPath();
+        ctx.moveTo(L / 2 - L * 0.3, 0.15);
+        ctx.lineTo(L / 2 - L * 0.3, 1.05);
+        ctx.lineTo(L / 2 - L * 0.16, 1.5);
+        ctx.lineTo(L / 2 + 0.05, 1.5);
+        ctx.lineTo(L / 2 + 0.05, 0.15);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#101d2b';
+        ctx.beginPath();
+        ctx.moveTo(L / 2 - L * 0.26, 1.12); ctx.lineTo(L / 2 - L * 0.15, 1.38);
+        ctx.lineTo(L / 2 + 0.0, 1.38); ctx.lineTo(L / 2 + 0.0, 1.12);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffe9a8';
+        ctx.beginPath(); ctx.arc(L / 2 + 0.02, 0.45, 0.08, 0, 6.29); ctx.fill();
+      }
+      ctx.restore();
+      // 车轮（世界坐标位置，跟随旋转）
+      veh.wheels.forEach(function (w) {
+        var x = w2sx(w.x), y = w2sy(w.y), r = V.r * cam.s;
+        ctx.fillStyle = '#161e28';
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 6.29); ctx.fill();
+        ctx.fillStyle = '#3a4553';
+        ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, 6.29); ctx.fill();
+        ctx.strokeStyle = '#8b98a8';
+        ctx.lineWidth = Math.max(1, r * 0.14);
+        for (var k = 0; k < 3; k++) {
+          var a = w.rot + k * 2.094;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + Math.cos(a) * r * 0.5, y - Math.sin(a) * r * 0.5);
+          ctx.stroke();
+        }
+      });
+    }
+    function drawParts() {
+      sim.parts.forEach(function (p) {
+        ctx.globalAlpha = clamp(p.life * p.fade, 0, 1);
+        ctx.fillStyle = 'rgb(' + p.col + ')';
+        ctx.fillRect(w2sx(p.x) - p.size / 2, w2sy(p.y) - p.size / 2, p.size, p.size);
+      });
+      ctx.globalAlpha = 1;
+    }
+    function draw(now) {
+      ctx.clearRect(0, 0, W, H);
+      // 天空
+      var sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, '#0a1420'); sky.addColorStop(0.7, '#0e1c2c'); sky.addColorStop(1, '#132534');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+      // 星星
+      STARS_BG.forEach(function (s) {
+        var tw2 = REDUCED ? 0.5 : (0.55 + 0.45 * Math.sin(now * 0.001 + s[3]));
+        ctx.globalAlpha = 0.35 * tw2;
+        ctx.fillStyle = '#cfe8ff';
+        var x = (s[0] * W - cam.x * cam.s * 0.04) % W;
+        if (x < 0) x += W;
+        ctx.fillRect(x, s[1] * H, s[2], s[2]);
+      });
+      ctx.globalAlpha = 1;
+      // 镜头抖动
+      var shx = 0, shy = 0;
+      if (sim && sim.shake > 0.02) {
+        shx = (Math.random() - 0.5) * sim.shake * 6;
+        shy = (Math.random() - 0.5) * sim.shake * 6;
+      }
+      ctx.save();
+      ctx.translate(shx, shy);
+      // 远山
+      drawHills(0.35, 5, 4.5, '#0d1926', 1.7);
+      drawHills(0.6, 4, 2.2, '#101f2d', 4.2);
+      drawTerrain();
+      drawWater(now);
+      drawFlag(now);
+      if (mode === 'build') {
+        drawGridDots();
+        design.beams.forEach(function (bm, idx) {
+          var s = segScreen(design.nodes.get(bm.a), design.nodes.get(bm.b));
+          drawBeamStyle(s, bm.mat, null, 1, tool === 'del' && idx === hoverBeamIdx);
+        });
+        drawAnchors();
+        drawNodesBuild();
+        drawPreview();
+      } else if (sim) {
+        sim.beams.forEach(function (b) {
+          if (b.broken) return;
+          var na = { i: b.na.x / GRID, j: b.na.y / GRID }, nb = { i: b.nb.x / GRID, j: b.nb.y / GRID };
+          var s = [w2sx(b.na.x), w2sy(b.na.y), w2sx(b.nb.x), w2sy(b.nb.y)];
+          drawBeamStyle(s, b.mat.id, b.stress, 1, false);
+        });
+        drawParts();
+        drawAnchors();
+        drawVehicle(sim.veh);
+      }
+      ctx.restore();
+    }
+
+    // ---------- 主循环 ----------
+    function frame(now) {
+      var dt = Math.min((now - frameLast) / 1000 || 0.016, 0.05);
+      frameLast = now;
+      if (mode === 'test' && sim) {
+        acc += dt;
+        var guard = 0;
+        while (acc >= PH.DT && guard < 6) { stepSim(PH.DT); acc -= PH.DT; guard++; }
+        if (guard >= 6) acc = 0;
+      }
+      draw(now);
+      requestAnimationFrame(frame);
+    }
+
+    // ============================================================
+    // 输入
+    // ============================================================
+    var pointers = new Map();
+    var gesture = null; // {type:'pan'|'beam'|'del'|'pinch', ...}
+    function ptPos(e) { var r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+    function nearestNode(sp) {
+      var best = null, bd = PH.SNAPR;
+      design.nodes.forEach(function (nd, key) {
+        var dx = w2sx(nd.i * GRID) - sp.x, dy = w2sy(nd.j * GRID) - sp.y;
+        var d = hyp(dx, dy);
+        if (d < bd) { bd = d; best = key; }
+      });
+      return best;
+    }
+    function snapGrid(sp) {
+      var i = Math.round(s2wx(sp.x) / GRID), j = Math.round(s2wy(sp.y) / GRID);
+      return { i: i, j: j, zone: inZone(i, j) };
+    }
+    function beamAtScreen(sp) {
+      var best = -1, bd = 13;
+      design.beams.forEach(function (bm, idx) {
+        var a = design.nodes.get(bm.a), b = design.nodes.get(bm.b);
+        var s = segScreen(a, b);
+        var abx = s[2] - s[0], aby = s[3] - s[1];
+        var L2 = abx * abx + aby * aby;
+        if (L2 < 1e-6) return;
+        var t = clamp(((sp.x - s[0]) * abx + (sp.y - s[1]) * aby) / L2, 0, 1);
+        var qx = s[0] + abx * t, qy = s[1] + aby * t;
+        var d = hyp(sp.x - qx, sp.y - qy);
+        if (d < bd) { bd = d; best = idx; }
+      });
+      return best;
+    }
+    cv.addEventListener('pointerdown', function (e) {
+      if (e.button !== undefined && e.button !== 0) return;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) {} // 合成事件/离点时静默
+      var sp = ptPos(e);
+      pointers.set(e.pointerId, sp);
+      hideOverlays();
+      if (pointers.size === 2) {
+        // 双指缩放
+        var ids = Array.from(pointers.keys());
+        var p1 = pointers.get(ids[0]), p2 = pointers.get(ids[1]);
+        gesture = {
+          type: 'pinch',
+          d0: Math.max(10, hyp(p2.x - p1.x, p2.y - p1.y)),
+          s0: cam.s,
+          wx: s2wx((p1.x + p2.x) / 2), wy: s2wy((p1.y + p2.y) / 2)
+        };
+        dragFrom = null; dragTo = null;
+        return;
+      }
+      if (mode === 'build') {
+        if (tool === 'del') { gesture = { type: 'del' }; var idx = beamAtScreen(sp); if (idx >= 0) deleteBeamAt(idx); return; }
+        var nd = nearestNode(sp);
+        if (nd) { gesture = { type: 'beam' }; dragFrom = nd; dragTo = null; }
+        else { gesture = { type: 'pan', last: sp }; }
+      } else {
+        gesture = { type: 'pan', last: sp };
+        if (sim) { sim.follow = false; syncFollow(); }
+      }
+    });
+    cv.addEventListener('pointermove', function (e) {
+      var sp = ptPos(e);
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, sp);
+      if (gesture && gesture.type === 'pinch' && pointers.size >= 2) {
+        var ids = Array.from(pointers.keys());
+        var p1 = pointers.get(ids[0]), p2 = pointers.get(ids[1]);
+        var d = Math.max(10, hyp(p2.x - p1.x, p2.y - p1.y));
+        cam.s = clamp(gesture.s0 * d / gesture.d0, 10, 90);
+        cam.x = gesture.wx - ((p1.x + p2.x) / 2 - W / 2) / cam.s;
+        cam.y = gesture.wy + ((p1.y + p2.y) / 2 - H / 2) / cam.s;
+        return;
+      }
+      if (gesture && gesture.type === 'beam') {
+        dragTo = snapGrid(sp);
+      } else if (gesture && gesture.type === 'del') {
+        var idx = beamAtScreen(sp);
+        hoverBeamIdx = idx;
+        if (idx >= 0) deleteBeamAt(idx);
+      } else if (gesture && gesture.type === 'pan') {
+        cam.x -= (sp.x - gesture.last.x) / cam.s;
+        cam.y += (sp.y - gesture.last.y) / cam.s;
+        gesture.last = sp;
+      } else {
+        // 悬停反馈
+        hoverBeamIdx = mode === 'build' && tool === 'del' ? beamAtScreen(sp) : -1;
+        hoverNodeKey = mode === 'build' && tool !== 'del' ? nearestNode(sp) : null;
+      }
+    });
+    function endPointer(e) {
+      pointers.delete(e.pointerId);
+      if (gesture && gesture.type === 'beam' && pointers.size === 0) {
+        if (dragFrom && dragTo && dragTo.zone) {
+          tryPlaceBeam(dragFrom, nk(dragTo.i, dragTo.j), tool);
+        }
+        dragFrom = null; dragTo = null;
+      }
+      if (pointers.size === 0) gesture = null;
+      else if (gesture && gesture.type === 'pinch') gesture = null;
+    }
+    function ensureNode(i, j) {
+      var key = nk(i, j);
+      if (!design.nodes.has(key) && inZone(i, j)) design.nodes.set(key, { i: i, j: j, anchor: false });
+      return key;
+    }
+    cv.addEventListener('pointerup', endPointer);
+    cv.addEventListener('pointercancel', endPointer);
+    cv.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var sp = ptPos(e);
+      zoomAt(sp.x, sp.y, e.deltaY < 0 ? 1.12 : 1 / 1.12);
+    }, { passive: false });
+    cv.addEventListener('dblclick', function () { fitView(); });
+    cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    window.addEventListener('keydown', function (e) {
+      if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+      var k = e.key.toLowerCase();
+      if (k === 'escape') { hideOverlays(); hint.hidden = true; return; }
+      if (k === 'h') { toggleOverlay(ovHelp); return; }
+      if (k === 'f') { fitView(); return; }
+      if ((e.metaKey || e.ctrlKey) && k === 'z') { e.preventDefault(); if (mode === 'build') doUndo(); return; }
+      if (k === ' ') {
+        e.preventDefault();
+        mode === 'build' ? startTest() : stopTest();
+        return;
+      }
+      if (mode !== 'build') return;
+      if (k === '1' || k === '2' || k === '3' || k === '4') { setTool(MAT_ORDER[+k - 1]); return; }
+      if (k === 'e') { setTool('del'); return; }
+      if (k === 'z' && !e.metaKey && !e.ctrlKey) { doUndo(); return; }
+    });
+
+    // ============================================================
+    // UI
+    // ============================================================
+    function setTool(m) {
+      tool = m;
+      var btns = buildBar.querySelectorAll('.mat-btn');
+      for (var k = 0; k < btns.length; k++) btns[k].classList.toggle('on', btns[k].dataset.mat === m);
+      cv.style.cursor = m === 'del' ? 'crosshair' : 'default';
+    }
+    (function initMatBtns() {
+      var btns = buildBar.querySelectorAll('.mat-btn');
+      if (btns.forEach) btns.forEach(function (b) {
+        b.addEventListener('click', function () { setTool(b.dataset.mat); });
+      });
+      else for (var k = 0; k < btns.length; k++) {
+        (function (b) { b.addEventListener('click', function () { setTool(b.dataset.mat); }); })(btns[k]);
+      }
+    })();
+    function syncBars() {
+      buildBar.hidden = mode !== 'build';
+      testBar.hidden = mode !== 'test';
+      var sb = !!level.sandbox;
+      vehSep.hidden = carBtn.hidden = truckBtn.hidden = !(sb && mode === 'test');
+      syncVehBtns();
+    }
+    function syncFollow() {
+      followBtn.textContent = sim && sim.follow ? '跟随 ✓' : '跟随';
+    }
+    var slowOn = false;
+    function syncVehBtns() {
+      carBtn.style.fontWeight = level.veh === 'car' ? '700' : '400';
+      truckBtn.style.fontWeight = level.veh === 'truck' ? '700' : '400';
+      carBtn.classList.toggle('primary', level.veh === 'car');
+      truckBtn.classList.toggle('primary', level.veh === 'truck');
+    }
+    undoBtn.addEventListener('click', doUndo);
+    clearBtn.addEventListener('click', function () {
+      if (clearArmed) {
+        clearTimeout(clearArmed);
+        clearArmed = 0;
+        clearBtn.textContent = '清空';
+        clearBtn.classList.remove('primary');
+        clearDesign();
+      } else {
+        clearBtn.textContent = '确认清空?';
+        clearBtn.classList.add('primary');
+        clearArmed = setTimeout(function () {
+          clearArmed = 0; clearBtn.textContent = '清空'; clearBtn.classList.remove('primary');
+        }, 2600);
+      }
+    });
+    testBtn.addEventListener('click', startTest);
+    stopBtn.addEventListener('click', function () { stopTest(); });
+    retryBtn.addEventListener('click', function () { startTest(); });
+    followBtn.addEventListener('click', function () { if (sim) { sim.follow = !sim.follow; syncFollow(); } });
+    slowBtn.addEventListener('click', function () {
+      slowOn = !slowOn;
+      slowBtn.classList.toggle('primary', slowOn);
+      if (sim) sim.timeScale = slowOn ? 0.35 : 1;
+    });
+    carBtn.addEventListener('click', function () { level.veh = 'car'; syncVehBtns(); startTest(); });
+    truckBtn.addEventListener('click', function () { level.veh = 'truck'; syncVehBtns(); startTest(); });
+    $('zin').addEventListener('click', function () { zoomAt(W / 2, H / 2, 1.25); });
+    $('zout').addEventListener('click', function () { zoomAt(W / 2, H / 2, 0.8); });
+    $('zfit').addEventListener('click', fitView);
+    $('lvBtn').addEventListener('click', function () { toggleOverlay(ovLevels); });
+    $('lvClose').addEventListener('click', function () { hideOverlays(); });
+    $('helpBtn').addEventListener('click', function () { toggleOverlay(ovHelp); });
+    $('helpClose').addEventListener('click', function () { hideOverlays(); if (mode === 'build' && levelIdx === 0) hint.hidden = false; });
+    $('hintOk').addEventListener('click', function () {
+      hint.hidden = true;
+      try { localStorage.setItem(LS_SEEN, '1'); } catch (e) {}
+    });
+    $('endBuild').addEventListener('click', function () { hideOverlays(); stopTest(); });
+    $('endRetry').addEventListener('click', function () { hideOverlays(); startTest(); });
+    $('endNext').addEventListener('click', function () { hideOverlays(); loadLevel(levelIdx + 1); });
+
+    function showOverlay(ov) { hideOverlays(); ov.classList.add('show'); }
+    function hideOverlays() {
+      ovLevels.classList.remove('show');
+      ovHelp.classList.remove('show');
+      ovEnd.classList.remove('show');
+    }
+    function toggleOverlay(ov) { ov.classList.contains('show') ? hideOverlays() : showOverlay(ov); }
+    function toast(msg, dur) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, dur || 1800);
+    }
+    function buildLevelList() {
+      var list = $('lvList');
+      list.textContent = '';
+      LEVELS.forEach(function (lv, idx) {
+        var locked = !lv.sandbox && idx + 1 > progress.unlocked;
+        var row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'lv-row' + (locked ? ' lock' : '') + (idx === levelIdx ? ' cur' : '');
+        var best = progress.lv[lv.id];
+        var side;
+        if (lv.sandbox) side = '<div class="st" style="color:var(--ink-faint)">∞</div>自由造';
+        else if (best) side = '<div class="st">' + '★'.repeat(best.stars) + '☆'.repeat(3 - best.stars) + '</div>' + fmtMoney(best.cost);
+        else side = '<div class="st" style="color:var(--ink-faint)">☆☆☆</div>未通关';
+        row.innerHTML =
+          '<span class="lv-no">' + (lv.sandbox ? '▦' : idx + 1) + '</span>' +
+          '<span class="lv-body"><h3>' + (locked ? '🔒 ' : '') + lv.name + '</h3><p>' + lv.brief + '</p></span>' +
+          '<span class="lv-side">' + side + '</span>';
+        if (!locked) {
+          row.addEventListener('click', function () { hideOverlays(); loadLevel(idx); });
+        }
+        list.appendChild(row);
+      });
+    }
+
+    // ---------- 启动 ----------
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(resize).observe(wrap);
+    } else {
+      window.addEventListener('resize', resize);
+    }
+    resize();
+    setTool('road');
+    syncFollow();
+    loadLevel(0);
+    requestAnimationFrame(function (t) { frameLast = t; frame(t); });
+
+    // ---------- 调试接口（自动化验证用，无副作用） ----------
+    window.__bg = {
+      info: function () {
+        return {
+          level: level.id, mode: mode, used: usedCost(), budget: level.budget,
+          beams: design.beams.length,
+          status: sim ? sim.status : null, t: sim ? Math.round(sim.t * 10) / 10 : 0,
+          vehX: sim ? Math.round(((sim.veh.w1.x + sim.veh.w2.x) / 2) * 10) / 10 : null,
+          broken: sim ? sim.beams.filter(function (b) { return b.broken; }).length : 0,
+          brokenDetail: sim ? sim.beams.filter(function (b) { return b.broken; }).map(function (b) {
+            return b.na.key + '~' + b.nb.key + ':' + b.mat.id;
+          }) : [],
+          peak: sim ? Math.round((sim.peak || 0) * 1000) / 1000 : 0,
+          minRoadY: sim ? Math.round(Math.min.apply(null, sim.beams.filter(function (b) { return b.mat.road && !b.broken; }).map(function (b) { return Math.min(b.na.y, b.nb.y); })) * 100) / 100 : null
+        };
+      },
+      place: function (a, b, mat) {
+        var ka = Array.isArray(a) ? nk(a[0], a[1]) : a;
+        var kb = Array.isArray(b) ? nk(b[0], b[1]) : b;
+        ensureNode(Array.isArray(a) ? a[0] : parseInt(a, 10), Array.isArray(a) ? a[1] : parseInt(a.split(',')[1], 10));
+        ensureNode(Array.isArray(b) ? b[0] : parseInt(b, 10), Array.isArray(b) ? b[1] : parseInt(b.split(',')[1], 10));
+        return tryPlaceBeam(ka, kb, mat || 'road', 'quiet');
+      },
+      load: function (n) { loadLevel(n); },
+      test: function () { startTest(); },
+      stop: function () { stopTest(); },
+      clear: function () { design.beams = []; pruneOrphans(); refreshBudget(); saveDesign(); },
+      ff: function (sec) {
+        if (!sim) return { error: 'not in test mode' };
+        var n = Math.round((sec || 5) / PH.DT);
+        for (var k = 0; k < n && (sim.status === 'run' || sim.status === 'settle'); k++) stepSim(PH.DT);
+        draw(performance.now()); // 无头环境下也产出可视状态
+        return this.info();
+      },
+      render: function () { draw(performance.now()); },
+      cam: function () { return cam; },
+      dbg: function () { return { mode: mode, tool: tool, dragFrom: dragFrom, dragTo: dragTo, gesture: gesture && gesture.type, pointers: pointers.size }; },
+      levels: LEVELS
+    };
+  })();
+  </script>
+</body>
+</html>
