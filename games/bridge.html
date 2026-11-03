@@ -48,6 +48,20 @@
       position: absolute; top: 10px; right: 10px; z-index: 3;
       display: flex; gap: 6px;
     }
+    /* 自由搭建：地形调节面板 */
+    .terra-panel {
+      position: absolute; top: 48px; left: 10px; z-index: 3;
+      width: 176px; padding: 10px 12px;
+      border-radius: 14px; border: 1px solid var(--hair);
+      background: rgba(8, 16, 26, 0.82);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .terra-panel .tp-title { font-size: 11px; color: var(--acc2); letter-spacing: 0.2em; }
+    .tp-row { display: flex; align-items: center; gap: 8px; }
+    .tp-row label { flex: none; width: 30px; font-size: 11px; color: var(--ink-dim); }
+    .tp-row input[type="range"] { flex: 1; min-width: 0; height: 22px; accent-color: #4df0d8; cursor: pointer; }
+    .tp-row b { flex: none; width: 34px; text-align: right; font-family: var(--mono); font-size: 11px; color: var(--ink); }
     .vbtn {
       width: 30px; height: 30px; padding: 0; justify-content: center;
       border-radius: 10px; font-size: 14px; line-height: 1;
@@ -175,7 +189,7 @@
       .chip { height: 26px; padding: 0 9px; }
       .chip b { font-size: 12px; }
       .mat-btn { min-width: 52px; height: 44px; }
-      .toast { top: 52px; } /* 避开左上角造价/预算芯片 */
+      .toast { top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); } /* 移到底部，避开芯片/地形面板/提示气泡 */
     }
   </style>
 </head>
@@ -201,6 +215,12 @@
         <span class="chip" id="budgetChip"><label>预算</label><b id="budgetVal">¥0</b></span>
         <span class="chip" id="maxChip" hidden><label>荷载</label><b id="maxVal">0%</b></span>
       </div>
+      <div class="terra-panel" id="terraPanel" hidden>
+        <div class="tp-title">⛰ 地形调整</div>
+        <div class="tp-row"><label>谷宽</label><input type="range" id="tGap" min="4" max="12" step="1" value="7"><b id="tGapV">14m</b></div>
+        <div class="tp-row"><label>左岸</label><input type="range" id="tHL" min="-1" max="2" step="1" value="0"><b id="tHLV">0m</b></div>
+        <div class="tp-row"><label>右岸</label><input type="range" id="tHR" min="-1" max="2" step="1" value="0"><b id="tHRV">0m</b></div>
+      </div>
       <div class="float-view">
         <button class="btn vbtn" id="zin" type="button" title="放大">＋</button>
         <button class="btn vbtn" id="zout" type="button" title="缩小">－</button>
@@ -212,6 +232,7 @@
         <button class="mat-btn" type="button" data-mat="wood"><span class="m-line" style="background:#a06a3a"></span><span class="m-name">木材</span><span class="m-cost">¥26/m</span></button>
         <button class="mat-btn" type="button" data-mat="steel"><span class="m-line" style="background:#8ea3bd"></span><span class="m-name">钢梁</span><span class="m-cost">¥95/m</span></button>
         <button class="mat-btn" type="button" data-mat="cable"><span class="m-line" style="background:#d7dee8"></span><span class="m-name">钢索</span><span class="m-cost">¥38/m</span></button>
+        <button class="mat-btn" type="button" data-mat="pier" id="pierBtn" style="display:none"><span class="m-line" style="background:#5d7b96"></span><span class="m-name">桥墩</span><span class="m-cost">拖放</span></button>
         <button class="mat-btn" type="button" data-mat="del"><span class="m-line" style="background:transparent;border-top:2px dashed var(--danger)"></span><span class="m-name">拆除</span><span class="m-cost">点/划</span></button>
         <span class="bar-sep"></span>
         <button class="btn" id="undoBtn" type="button" title="撤销 (Z)">↶ 撤销</button>
@@ -272,6 +293,7 @@
               <li>钢索吊在高位锚点上，能把长跨中部「拎」起来。</li>
               <li>星级按省钱程度评定：3★ ≤ 预算 72%，2★ ≤ 88%。</li>
               <li>轿车关通关后可点「🚚 换卡车验证」用重卡复验同一方案，扛住重载即获得 🚚 徽章（星级按轿车成绩计，不受重卡影响）。</li>
+              <li>「⚒ 自由搭建」（选关列表第一位，需手动进入）：左上滑杆可调谷宽与两岸高度；选「桥墩」工具按住拖到河里松手放置石墩（顶面即锚点，拆除工具可删）；材料与桥墩数量不限，轿车/卡车随切。</li>
             </ul>
             <h4>操作</h4>
             <p>
@@ -342,6 +364,13 @@
     // ---------- 关卡（格点 i,j → 世界 x=2i, y=2j；y 向上） ----------
     var LEVELS = [
       {
+        // 自由搭建：排在最前但仅可从选关手动进入（新手仍落到第 1 关）；
+        // 地形由 applyFreeTerrain() 按 FREE 参数动态生成，材料与桥墩数量不限
+        id: 'free', name: '自由搭建', brief: '谷宽/两岸高度可调 · 拖放桥墩 · 无限材料',
+        sandbox: true, free: true, budget: Infinity, veh: 'car', water: -10,
+        terrain: [], anchors: [], zones: [], spawn: -8, goal: 20
+      },
+      {
         id: 'l1', name: '新手峡谷', brief: '10 米小峡谷 · 轿车 · 学会用三角桁架',
         budget: 1900, veh: 'car', spawn: -8, goal: 22, water: null,
         terrain: [[-16, 0], [6, 0], [6, -10], [16, -10], [16, 0], [32, 0]],
@@ -382,16 +411,106 @@
         terrain: [[-20, 0], [4, 0], [4, -20], [14, -20], [14, -4], [20, -4], [20, -20], [30, -20], [30, 0], [46, 0]],
         anchors: [[2, 0], [15, 0], [2, -1], [15, -1], [3, 0], [14, 0], [7, -2], [10, -2]],
         zones: [[-1, -8, 6, 2], [7, -2, 10, 2], [11, -8, 16, 2]]
-      },
-      {
-        id: 'sb', name: '自由沙盒', brief: '无限预算 · 轿车/卡车随切 · 随便造',
-        budget: Infinity, sandbox: true, veh: 'car', spawn: -10, goal: 32, water: -14,
-        terrain: [[-20, 0], [6, 0], [6, -16], [26, -16], [26, 0], [44, 0]],
-        anchors: [[3, 0], [13, 0], [3, -1], [13, -1], [3, 2], [13, 2]],
-        zones: [[1, -6, 15, 3]]
       }
     ];
-    var REAL_LEVELS = 6; // 沙盒之前为正式关卡
+    // 正式关卡（非自由）在 LEVELS 中的下标：解锁序号/下一关都按此序，与自由关位置无关
+    var REAL_IDX = [];
+    LEVELS.forEach(function (lv, i) { if (!lv.sandbox) REAL_IDX.push(i); });
+    function realOrd(idx) { return REAL_IDX.indexOf(idx); }
+
+    // ---------- 自由搭建：地形参数（格）与桥墩 ----------
+    var FREE = { gap: 7, hL: 0, hR: 0 };  // gap 谷宽 4..12 格（8..24m）；hL/hR 两岸高度 -1..2 格（-2..+4m）
+    var FREE_BED = -14;                   // 河床高度（米）
+    function loadFreeCfg() {
+      try {
+        var s = JSON.parse(localStorage.getItem('games:bridge:freecfg') || '');
+        if (s && typeof s === 'object') {
+          FREE = { gap: clamp(s.gap || 7, 4, 12), hL: clamp(s.hL || 0, -1, 2), hR: clamp(s.hR || 0, -1, 2) };
+        }
+      } catch (e) {}
+    }
+    function saveFreeCfg() {
+      try { localStorage.setItem('games:bridge:freecfg', JSON.stringify(FREE)); } catch (e) {}
+    }
+    function pierTopY() { return Math.max(FREE.hL, FREE.hR) * GRID - 2; } // 桥墩顶面：较高岸下 2 米
+    function applyFreeTerrain() {
+      var g = FREE.gap, gapX = g * GRID;
+      level.terrain = [[-24, FREE.hL * GRID], [0, FREE.hL * GRID], [0, FREE_BED],
+        [gapX, FREE_BED], [gapX, FREE.hR * GRID], [gapX + 24, FREE.hR * GRID]];
+      level.anchors = [[0, FREE.hL], [0, FREE.hL - 1], [g, FREE.hR], [g, FREE.hR - 1]];
+      level.zones = [[-1, -7, g + 1, Math.max(FREE.hL, FREE.hR) + 2]];
+      level.water = -10;
+      level.spawn = -8;
+      level.goal = gapX + 6;
+    }
+    // 碰撞段 = 地形 + 各桥墩（顶面与两侧），桥墩放置/删除/地形调整后重建
+    function rebuildTsegs() {
+      var segs = [], T = level.terrain;
+      for (var k = 0; k < T.length - 1; k++) segs.push([T[k][0], T[k][1], T[k + 1][0], T[k + 1][1]]);
+      if (level.free) {
+        design.piers.forEach(function (p) {
+          var cx = p.i * GRID, top = pierTopY();
+          segs.push([cx - 2, top, cx + 2, top]);
+          segs.push([cx - 2, FREE_BED, cx - 2, top]);
+          segs.push([cx + 2, top, cx + 2, FREE_BED]);
+        });
+      }
+      level.tseg = segs;
+    }
+    function pierValid(i) {
+      if (!level.free || i < 2 || i > FREE.gap - 2) return false;
+      for (var k = 0; k < design.piers.length; k++) if (Math.abs(design.piers[k].i - i) < 2) return false;
+      return true;
+    }
+    function placePier(i) {
+      if (!pierValid(i)) {
+        toast(i < 2 || i > FREE.gap - 2 ? '桥墩要放在河中间' : '这里已有桥墩');
+        return false;
+      }
+      pushUndo();
+      design.piers.push({ i: i });
+      var tj = pierTopY() / GRID;
+      for (var d = -1; d <= 1; d++) {
+        var key = nk(i + d, tj);
+        var ex = design.nodes.get(key);
+        if (ex) { ex.anchor = true; ex.pier = true; } // 已有普通节点（先搭杆后放墩）转为墩顶锚点
+        else design.nodes.set(key, { i: i + d, j: tj, anchor: true, pier: true });
+      }
+      rebuildTsegs();
+      refreshBudget(); saveDesign();
+      return true;
+    }
+    function pierAtScreen(sp) {
+      if (!level.free) return -1;
+      var yt = w2sy(pierTopY()), yb = w2sy(FREE_BED);
+      for (var k = 0; k < design.piers.length; k++) {
+        var p = design.piers[k];
+        var x0 = w2sx(p.i * GRID - 2), x1 = w2sx(p.i * GRID + 2);
+        if (sp.x >= x0 && sp.x <= x1 && sp.y >= yt && sp.y <= yb) return k;
+      }
+      return -1;
+    }
+    function deletePier(k) {
+      var p = design.piers[k];
+      var tj = pierTopY() / GRID;
+      for (var b = 0; b < design.beams.length; b++) {
+        var bm = design.beams[b], ea = keyIJ(bm.a), eb = keyIJ(bm.b);
+        if ((ea[0] >= p.i - 1 && ea[0] <= p.i + 1 && ea[1] === tj) ||
+            (eb[0] >= p.i - 1 && eb[0] <= p.i + 1 && eb[1] === tj)) {
+          toast('桥墩上还有构件，先拆除上面的杆件');
+          return;
+        }
+      }
+      pushUndo();
+      design.piers.splice(k, 1);
+      for (var d = -1; d <= 1; d++) {
+        var ii = p.i + d, stillOwned = false;
+        for (var q = 0; q < design.piers.length; q++) if (Math.abs(design.piers[q].i - ii) <= 1) { stillOwned = true; break; }
+        if (!stillOwned) design.nodes.delete(nk(ii, tj));
+      }
+      rebuildTsegs();
+      refreshBudget(); saveDesign();
+    }
 
     // ---------- 小工具 ----------
     function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -419,19 +538,22 @@
     var stopBtn = $('stopBtn'), retryBtn = $('retryBtn'), followBtn = $('followBtn'), slowBtn = $('slowBtn');
     var carBtn = $('carBtn'), truckBtn = $('truckBtn'), vehSep = $('vehSep');
     var ovLevels = $('ovLevels'), ovHelp = $('ovHelp'), ovEnd = $('ovEnd');
+    var terraPanel = $('terraPanel'), pierBtn = $('pierBtn');
+    var tGap = $('tGap'), tHL = $('tHL'), tHR = $('tHR'), tGapV = $('tGapV'), tHLV = $('tHLV'), tHRV = $('tHRV');
     var hint = $('hint'), toastEl = $('toast');
     var REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // ---------- 状态 ----------
     var GRID = 2;
     var levelIdx = 0, level = LEVELS[0], mode = 'build', tool = 'road';
-    var design = { nodes: new Map(), beams: [] }; // nodes: key -> {i,j,anchor}; beams: {a,b,mat}
+    var design = { nodes: new Map(), beams: [], piers: [] }; // nodes: key -> {i,j,anchor}; beams: {a,b,mat}; piers: {i}
     var undoStack = [];
     var cam = { x: 10, y: -3, s: 30 };
     var W = 0, H = 0, DPR = 1;
     var sim = null;
     var runVeh = null; // 重卡验证：临时换车跑同一方案（null = 按关卡默认车型）
     var dragFrom = null, dragTo = null, hoverBeamIdx = -1, hoverNodeKey = null;
+    var pierGhostI = null; // 桥墩工具：拖放中的目标列
     var clearArmed = 0, toastTimer = 0, endTimer = 0;
     var frameLast = 0, acc = 0;
 
@@ -453,7 +575,8 @@
       var n = [];
       design.nodes.forEach(function (nd) { n.push([nd.i, nd.j, nd.anchor ? 1 : 0]); });
       var b = design.beams.map(function (bm) { return [bm.a, bm.b, bm.mat]; });
-      return { n: n, b: b };
+      var p = design.piers.map(function (pi) { return [pi.i]; });
+      return { n: n, b: b, p: p };
     }
     function deserializeDesign(d) {
       var nd = new Map();
@@ -462,7 +585,11 @@
       (d.b || []).forEach(function (r) {
         if (nd.has(r[0]) && nd.has(r[1]) && MATS[r[2]]) bm.push({ a: r[0], b: r[1], mat: r[2] });
       });
-      return { nodes: nd, beams: bm };
+      var ps = [];
+      (d.p || []).forEach(function (r) {
+        if (level.free && pierValid(r[0])) ps.push({ i: r[0] });
+      });
+      return { nodes: nd, beams: bm, piers: ps };
     }
     function saveDesign() {
       try { localStorage.setItem(LS_DESIGN + level.id, JSON.stringify(serializeDesign())); } catch (e) {}
@@ -557,16 +684,19 @@
       if (!undoStack.length) return;
       design = deserializeDesign(JSON.parse(undoStack.pop()));
       undoBtn.disabled = !undoStack.length;
+      rebuildTsegs(); // 桥墩可能随撤销增删
       refreshBudget();
       saveDesign();
     }
     function clearDesign() {
-      if (!design.beams.length) return;
+      if (!design.beams.length && !design.piers.length) return;
       pushUndo();
       design.beams = [];
+      design.piers = [];
       var del = [];
-      design.nodes.forEach(function (nd, key) { if (!nd.anchor) del.push(key); });
+      design.nodes.forEach(function (nd, key) { if (!nd.anchor || nd.pier) del.push(key); });
       del.forEach(function (key) { design.nodes.delete(key); });
+      rebuildTsegs();
       afterDesignChange();
     }
     function refreshBudget() {
@@ -588,36 +718,34 @@
     function loadLevel(idx) {
       levelIdx = clamp(idx, 0, LEVELS.length - 1);
       level = LEVELS[levelIdx];
-      design = { nodes: new Map(), beams: [] };
+      if (level.free) { loadFreeCfg(); applyFreeTerrain(); syncTerraUI(); } // 自由关地形按保存的参数生成
+      design = { nodes: new Map(), beams: [], piers: [] };
       level.anchors.forEach(function (a) { design.nodes.set(nk(a[0], a[1]), { i: a[0], j: a[1], anchor: true }); });
       var saved = loadDesign();
       if (saved) {
         // 保留锚点，叠加存档
         saved.nodes.forEach(function (nd, key) { if (!design.nodes.has(key)) design.nodes.set(key, nd); });
         design.beams = saved.beams;
+        design.piers = saved.piers;
       }
       undoStack = []; undoBtn.disabled = true;
-      level.tseg = [];
-      for (var k = 0; k < level.terrain.length - 1; k++) {
-        var p = level.terrain[k], q = level.terrain[k + 1];
-        level.tseg.push([p[0], p[1], q[0], q[1]]);
-      }
+      rebuildTsegs();
       var minY = 0;
       level.terrain.forEach(function (p) { minY = Math.min(minY, p[1]); });
       level.killY = minY - 4;
       stopTest(true);
       mode = 'build';
       syncBars();
-      elLvName.textContent = '第 ' + (levelIdx + 1) + ' 关 · ' + level.name;
-      if (level.sandbox) elLvName.textContent = '自由沙盒';
+      elLvName.textContent = '第 ' + (realOrd(levelIdx) + 1) + ' 关 · ' + level.name;
+      if (level.sandbox) elLvName.textContent = level.free ? '自由搭建' : '自由沙盒';
       refreshBudget();
       fitView();
       hideOverlays();
       var best = progress.lv[level.id];
-      toast(level.sandbox ? '自由沙盒 · 无限预算，随便造' :
-        (levelIdx + 1) + ' · ' + level.name + ' — 预算 ' + fmtMoney(level.budget) +
+      toast(level.sandbox ? '自由搭建 · 无限材料；左侧可调地形，河里可拖放桥墩' :
+        (realOrd(levelIdx) + 1) + ' · ' + level.name + ' — 预算 ' + fmtMoney(level.budget) +
         (best ? '（最佳 ' + '★'.repeat(best.stars) + ' ' + fmtMoney(best.cost) + '）' : ''), 2600);
-      try { if (!JSON.parse(localStorage.getItem(LS_SEEN) || '0') && levelIdx === 0) hint.hidden = false; } catch (e) {}
+      try { if (!JSON.parse(localStorage.getItem(LS_SEEN) || '0') && levelIdx === REAL_IDX[0]) hint.hidden = false; } catch (e) {}
       buildLevelList();
     }
 
@@ -686,7 +814,7 @@
     }
     function makeVehicle(kind) {
       var V = CARS[kind] || CARS.car;
-      var y0 = V.r + 0.02;
+      var y0 = level.terrain[0][1] + V.r + 0.02; // 出生高度跟随左岸（自由搭建可抬高/降低）
       function P(x, y, m) { return { x: x, y: y, px: x, py: y, invM: 1 / m, contact: false, rot: 0, rotAcc: 0 }; }
       var w1 = P(level.spawn - V.wb / 2, y0, V.wm);
       var w2 = P(level.spawn + V.wb / 2, y0, V.wm);
@@ -973,7 +1101,8 @@
               progress.lv[level.id] = { stars: stars, cost: used };
               if (best && best.truck) progress.lv[level.id].truck = true; // 保留已有徽章
             }
-            if (levelIdx < REAL_LEVELS - 1) progress.unlocked = Math.max(progress.unlocked, levelIdx + 2);
+            var ord = realOrd(levelIdx);
+            if (ord >= 0 && ord < REAL_IDX.length - 1) progress.unlocked = Math.max(progress.unlocked, ord + 2);
             saveProgress(progress);
             buildLevelList();
             info += '<br>' + (isNew ? '<b style="color:var(--acc2)">★ 新纪录！</b>' : '本关最佳 ' + '★'.repeat(progress.lv[level.id].stars) + ' · ' + fmtMoney(progress.lv[level.id].cost));
@@ -997,7 +1126,7 @@
         } else es.hidden = true;
         $('endTag').textContent = kind === 'win' ? (challenge ? '重卡复验' : '检验通过') : '检验失败';
         var next = $('endNext');
-        next.hidden = !(kind === 'win' && !level.sandbox && levelIdx < REAL_LEVELS - 1);
+        next.hidden = !(kind === 'win' && !level.sandbox && realOrd(levelIdx) < REAL_IDX.length - 1);
         var trk = $('endTruck');
         trk.hidden = !(kind === 'win' && !challenge && !level.sandbox && level.veh === 'car');
         showOverlay(ovEnd);
@@ -1076,8 +1205,42 @@
       ctx.lineWidth = 2.5;
       ctx.stroke();
     }
+    // 桥墩（自由关）：岩柱本体 + 顶面锚点由 drawAnchors 绘制；含拖放幽灵预览
+    function drawPiers() {
+      if (!level.free) return;
+      var top = pierTopY();
+      design.piers.forEach(function (p) {
+        var x0 = w2sx(p.i * GRID - 2), x1 = w2sx(p.i * GRID + 2);
+        var yt = w2sy(top), yb = w2sy(FREE_BED);
+        if (x1 < -20 || x0 > W + 20) return;
+        var g = ctx.createLinearGradient(0, yt, 0, yb);
+        g.addColorStop(0, '#243348'); g.addColorStop(1, '#0f1926');
+        ctx.fillStyle = g;
+        ctx.fillRect(x0, yt, x1 - x0, yb - yt);
+        ctx.strokeStyle = 'rgba(96, 126, 156, 0.32)';
+        ctx.lineWidth = 8;
+        ctx.strokeRect(x0, yt, x1 - x0, yb - yt);
+        ctx.strokeStyle = '#5d7b96';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x0, yt, x1 - x0, yb - yt);
+      });
+      if (mode === 'build' && tool === 'pier' && pierGhostI !== null) {
+        var ok = pierValid(pierGhostI);
+        var gx0 = w2sx(pierGhostI * GRID - 2), gx1 = w2sx(pierGhostI * GRID + 2);
+        var gyt = w2sy(top), gyb = w2sy(FREE_BED);
+        ctx.fillStyle = ok ? 'rgba(77, 240, 216, 0.16)' : 'rgba(255, 123, 114, 0.16)';
+        ctx.fillRect(gx0, gyt, gx1 - gx0, gyb - gyt);
+        ctx.strokeStyle = ok ? 'rgba(77, 240, 216, 0.8)' : 'rgba(255, 123, 114, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([7, 6]);
+        ctx.strokeRect(gx0, gyt, gx1 - gx0, gyb - gyt);
+        ctx.setLineDash([]);
+      }
+    }
     function drawFlag(now) {
-      var x = w2sx(level.goal), y0 = w2sy(0);
+      var rightY = w2sy(level.terrain[level.terrain.length - 1][1]); // 右岸高度（旗帜/终点）
+      var leftY = w2sy(level.terrain[0][1]);                          // 左岸高度（起点箭头）
+      var x = w2sx(level.goal), y0 = rightY;
       ctx.strokeStyle = '#c9d6e2';
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 - 2.6 * cam.s); ctx.stroke();
@@ -1096,9 +1259,9 @@
       ctx.lineWidth = Math.max(2.5, cs * 0.16);
       for (var k = 0; k < 2; k++) {
         ctx.beginPath();
-        ctx.moveTo(sx - 0.6 * cs + k * cs, y0 - 1.8 * cs);
-        ctx.lineTo(sx + 0.45 * cs + k * cs, y0 - 0.9 * cs);
-        ctx.lineTo(sx - 0.6 * cs + k * cs, y0);
+        ctx.moveTo(sx - 0.6 * cs + k * cs, leftY - 1.8 * cs);
+        ctx.lineTo(sx + 0.45 * cs + k * cs, leftY - 0.9 * cs);
+        ctx.lineTo(sx - 0.6 * cs + k * cs, leftY);
         ctx.stroke();
       }
     }
@@ -1350,6 +1513,7 @@
       drawHills(0.35, 5, 4.5, '#0d1926', 1.7);
       drawHills(0.6, 4, 2.2, '#101f2d', 4.2);
       drawTerrain();
+      drawPiers();
       drawWater(now);
       drawFlag(now);
       if (mode === 'build') {
@@ -1443,7 +1607,18 @@
         return;
       }
       if (mode === 'build') {
-        if (tool === 'del') { gesture = { type: 'del' }; var idx = beamAtScreen(sp); if (idx >= 0) deleteBeamAt(idx); return; }
+        if (tool === 'del') {
+          gesture = { type: 'del' };
+          var pk = pierAtScreen(sp);
+          if (pk >= 0) { deletePier(pk); return; }
+          var idx = beamAtScreen(sp); if (idx >= 0) deleteBeamAt(idx);
+          return;
+        }
+        if (tool === 'pier') { // 桥墩工具：按住拖到河里，松手放置
+          gesture = { type: 'pier' };
+          pierGhostI = Math.round(s2wx(sp.x) / GRID);
+          return;
+        }
         var nd = nearestNode(sp);
         if (nd) { gesture = { type: 'beam' }; dragFrom = nd; dragTo = null; }
         else { gesture = { type: 'pan', last: sp }; }
@@ -1466,7 +1641,11 @@
       }
       if (gesture && gesture.type === 'beam') {
         dragTo = snapGrid(sp);
+      } else if (gesture && gesture.type === 'pier') {
+        pierGhostI = Math.round(s2wx(sp.x) / GRID);
       } else if (gesture && gesture.type === 'del') {
+        var pk2 = pierAtScreen(sp);
+        if (pk2 >= 0) { deletePier(pk2); hoverBeamIdx = -1; return; }
         var idx = beamAtScreen(sp);
         hoverBeamIdx = idx;
         if (idx >= 0) deleteBeamAt(idx);
@@ -1487,6 +1666,10 @@
           tryPlaceBeam(dragFrom, nk(dragTo.i, dragTo.j), tool);
         }
         dragFrom = null; dragTo = null;
+      }
+      if (gesture && gesture.type === 'pier' && pointers.size === 0) {
+        if (pierGhostI !== null) placePier(pierGhostI);
+        pierGhostI = null;
       }
       if (pointers.size === 0) gesture = null;
       else if (gesture && gesture.type === 'pinch') gesture = null;
@@ -1520,6 +1703,7 @@
       }
       if (mode !== 'build') return;
       if (k === '1' || k === '2' || k === '3' || k === '4') { setTool(MAT_ORDER[+k - 1]); return; }
+      if (k === '5' && level.free) { setTool('pier'); return; }
       if (k === 'e') { setTool('del'); return; }
       if (k === 'z' && !e.metaKey && !e.ctrlKey) { doUndo(); return; }
     });
@@ -1531,7 +1715,7 @@
       tool = m;
       var btns = buildBar.querySelectorAll('.mat-btn');
       for (var k = 0; k < btns.length; k++) btns[k].classList.toggle('on', btns[k].dataset.mat === m);
-      cv.style.cursor = m === 'del' ? 'crosshair' : 'default';
+      cv.style.cursor = (m === 'del' || m === 'pier') ? 'crosshair' : 'default';
     }
     (function initMatBtns() {
       var btns = buildBar.querySelectorAll('.mat-btn');
@@ -1548,6 +1732,9 @@
       // 沙盒随时换车；重卡验证期间也可切回默认车型
       var showVeh = mode === 'test' && (!!level.sandbox || !!runVeh);
       vehSep.hidden = carBtn.hidden = truckBtn.hidden = !showVeh;
+      // 自由搭建：地形面板与桥墩工具
+      terraPanel.hidden = !(level.free && mode === 'build');
+      pierBtn.style.display = level.free ? '' : 'none';
       syncVehBtns();
     }
     function syncFollow() {
@@ -1605,6 +1792,35 @@
     $('zin').addEventListener('click', function () { zoomAt(W / 2, H / 2, 1.25); });
     $('zout').addEventListener('click', function () { zoomAt(W / 2, H / 2, 0.8); });
     $('zfit').addEventListener('click', fitView);
+    // 自由搭建：地形滑杆（拖动实时改标签，松手才重建地形并清空设计）
+    function fmtBank(v) { return (v >= 0 ? '+' : '') + (v * 2) + 'm'; }
+    function syncTerraUI() {
+      tGap.value = FREE.gap; tGapV.textContent = (FREE.gap * 2) + 'm';
+      tHL.value = FREE.hL; tHLV.textContent = fmtBank(FREE.hL);
+      tHR.value = FREE.hR; tHRV.textContent = fmtBank(FREE.hR);
+    }
+    function onTerraChange() {
+      FREE = { gap: clamp(+tGap.value, 4, 12), hL: clamp(+tHL.value, -1, 2), hR: clamp(+tHR.value, -1, 2) };
+      saveFreeCfg();
+      applyFreeTerrain();
+      design = { nodes: new Map(), beams: [], piers: [] };
+      level.anchors.forEach(function (a) { design.nodes.set(nk(a[0], a[1]), { i: a[0], j: a[1], anchor: true }); });
+      undoStack = []; undoBtn.disabled = true;
+      rebuildTsegs();
+      var minY = 0;
+      level.terrain.forEach(function (p) { minY = Math.min(minY, p[1]); });
+      level.killY = minY - 4;
+      saveDesign();
+      syncTerraUI();
+      refreshBudget();
+      fitView();
+    }
+    [[tGap, tGapV, function (v) { return (v * 2) + 'm'; }],
+     [tHL, tHLV, fmtBank],
+     [tHR, tHRV, fmtBank]].forEach(function (row) {
+      row[0].addEventListener('input', function () { row[1].textContent = row[2](+row[0].value); });
+      row[0].addEventListener('change', onTerraChange);
+    });
     $('lvBtn').addEventListener('click', function () { toggleOverlay(ovLevels); });
     $('lvClose').addEventListener('click', function () { hideOverlays(); });
     $('helpBtn').addEventListener('click', function () { toggleOverlay(ovHelp); });
@@ -1615,7 +1831,7 @@
     });
     $('endBuild').addEventListener('click', function () { hideOverlays(); stopTest(); });
     $('endRetry').addEventListener('click', function () { hideOverlays(); startTest(); });
-    $('endNext').addEventListener('click', function () { hideOverlays(); loadLevel(levelIdx + 1); });
+    $('endNext').addEventListener('click', function () { hideOverlays(); loadLevel(REAL_IDX[realOrd(levelIdx) + 1]); });
 
     function showOverlay(ov) { hideOverlays(); ov.classList.add('show'); }
     function hideOverlays() {
@@ -1634,7 +1850,7 @@
       var list = $('lvList');
       list.textContent = '';
       LEVELS.forEach(function (lv, idx) {
-        var locked = !lv.sandbox && idx + 1 > progress.unlocked;
+        var locked = !lv.sandbox && realOrd(idx) + 1 > progress.unlocked;
         var row = document.createElement('button');
         row.type = 'button';
         row.className = 'lv-row' + (locked ? ' lock' : '') + (idx === levelIdx ? ' cur' : '');
@@ -1644,7 +1860,7 @@
         else if (best) side = '<div class="st">' + '★'.repeat(best.stars) + '☆'.repeat(3 - best.stars) + (best.truck ? ' 🚚' : '') + '</div>' + fmtMoney(best.cost);
         else side = '<div class="st" style="color:var(--ink-faint)">☆☆☆</div>未通关';
         row.innerHTML =
-          '<span class="lv-no">' + (lv.sandbox ? '▦' : idx + 1) + '</span>' +
+          '<span class="lv-no">' + (lv.sandbox ? (lv.free ? '⚒' : '▦') : realOrd(idx) + 1) + '</span>' +
           '<span class="lv-body"><h3>' + (locked ? '🔒 ' : '') + lv.name + '</h3><p>' + lv.brief + '</p></span>' +
           '<span class="lv-side">' + side + '</span>';
         if (!locked) {
@@ -1663,7 +1879,7 @@
     resize();
     setTool('road');
     syncFollow();
-    loadLevel(0);
+    loadLevel(REAL_IDX[0]); // 新手进第 1 关；自由搭建仅从选关手动进入
     requestAnimationFrame(function (t) { frameLast = t; frame(t); });
 
     // ---------- 调试接口（自动化验证用，无副作用） ----------
