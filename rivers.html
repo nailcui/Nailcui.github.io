@@ -181,7 +181,7 @@
     </header>
 
     <div class="hud legend" id="legend" role="group" aria-label="流域显示切换"><div class="lg-track" id="lgTrack"></div></div>
-    <div class="hud credit">示意地图 · 底图含十段线 · 边界数据源自高德系（DataV.GeoAtlas）· 河流走线源自公共领域数据（Natural Earth）· 仅供参考</div>
+    <div class="hud credit">示意地图 · 底图含十段线 · 边界数据源自高德系（DataV.GeoAtlas）· 河流走线 Natural Earth + HydroSHEDS HydroRIVERS · 仅供参考</div>
     <div id="tooltip"></div>
   </div>
 
@@ -297,6 +297,52 @@
     }).filter(function (r) { return r.segs.length && BASINS[r.b]; });
     RIVERS.sort(function (a, b) { return (a.w - b.w) || (a.L - b.L); });
 
+    /* ================= 稠密支流图层（HydroSHEDS HydroRIVERS） =================
+     * 每流域两条 Path2D（河级 3-4 / ≥5），基准坐标预投影；命中检测用均匀网格索引。 */
+    var DENSE = [];
+    var DENSE_N = 0;
+    (DATA.dense && DATA.dense.basins || []).forEach(function (db) {
+      if (!BASINS[db.id]) return;
+      var o = { id: db.id, p34: new Path2D(), p5: new Path2D(), lines: [] };
+      function take(list, path) {
+        list.forEach(function (flat) {
+          var pts = [];
+          for (var i = 0; i + 1 < flat.length; i += 2) {
+            var b = proj(flat[i], flat[i + 1]);
+            pts.push([b.x, b.y]);
+            if (i === 0) path.moveTo(b.x, b.y); else path.lineTo(b.x, b.y);
+          }
+          if (pts.length >= 2) { o.lines.push({ b: db.id, pts: pts }); DENSE_N++; }
+        });
+      }
+      take(db.o34 || [], o.p34);
+      take(db.o5 || [], o.p5);
+      if (o.lines.length) DENSE.push(o);
+    });
+
+    // 命中网格：把每条折线按端点+插值撒进格 cell（查询时再去重）
+    var DGRID = { cell: 26, map: new Map() };
+    DENSE.forEach(function (o) {
+      o.lines.forEach(function (ln) {
+        var pts = ln.pts;
+        for (var i = 1; i < pts.length; i++) {
+          var a = pts[i - 1], b = pts[i];
+          var steps = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / DGRID.cell));
+          var lastKey = NaN;
+          for (var s2 = 0; s2 <= steps; s2++) {
+            var x = a[0] + (b[0] - a[0]) * s2 / steps;
+            var y = a[1] + (b[1] - a[1]) * s2 / steps;
+            var key = ((y / DGRID.cell) | 0) * 4096 + ((x / DGRID.cell) | 0);
+            if (key === lastKey) continue;
+            lastKey = key;
+            var arr = DGRID.map.get(key);
+            if (!arr) { arr = []; DGRID.map.set(key, arr); }
+            if (arr.length < 600) arr.push(ln);
+          }
+        }
+      });
+    });
+
     var fmtKm = function (n) { return n >= 10000 ? '≈ ' + (n / 10000).toFixed(1) + ' 万 km' : '≈ ' + n + ' km'; };
 
     /* ================= 视图（平移 / 缩放） ================= */
@@ -377,8 +423,13 @@
       total = Math.round(total / 100) * 100;
       statsEl.innerHTML = '';
       addChip('<b>' + BASIN_LIST.length + '</b> 大流域');
-      addChip('<b>' + RIVERS.length + '</b> 条河流', 'chip-extra');
-      addChip('总长 ' + '<b>' + (total >= 10000 ? (total / 10000).toFixed(1) + ' 万' : total) + '</b> km', 'chip-extra');
+      addChip('<b>' + RIVERS.length + '</b> 条主要河流', 'chip-extra');
+      if (DENSE_N) {
+        var dn = DENSE_N >= 10000 ? (DENSE_N / 10000).toFixed(1) + ' 万' : String(DENSE_N);
+        addChip('支流 <b>' + dn + '</b> 段', 'chip-extra');
+      } else {
+        addChip('总长 ' + '<b>' + (total >= 10000 ? (total / 10000).toFixed(1) + ' 万' : total) + '</b> km', 'chip-extra');
+      }
       function addChip(html, extra) {
         var s = document.createElement('span');
         if (extra) s.className = extra;
@@ -466,6 +517,7 @@
       ctx.stroke(chinaPath);
       ctx.restore();
 
+      drawDense(t || 0);
       drawRivers(t || 0);
       if (view.s > view.minS * 1.9) drawRiverLabels();
       drawSouthSeaInset();
@@ -475,6 +527,41 @@
       var zf = Math.min(1.7, Math.max(0.95, Math.sqrt(view.s / view.minS)));
       var bw = (w >= 3 ? 1.6 : w === 2 ? 1.1 : 0.78) * zf;
       return hl ? bw * 1.45 : bw;
+    }
+
+    // 稠密支流：每流域 o3-4 / o≥5 两条 Path2D，世界坐标系描边（宽度按视图缩放补偿）
+    function drawDense(t) {
+      if (!DENSE.length) return;
+      var hl = hlBasin();
+      ctx.save();
+      ctx.setTransform(view.s * dpr, 0, 0, view.s * dpr, view.tx * dpr, view.ty * dpr);
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      for (var i = 0; i < DENSE.length; i++) {
+        var o = DENSE[i];
+        if (!basinOn(o.id)) continue;
+        var isHl = hl === o.id;
+        ctx.globalAlpha = (hl && !isHl) ? 0.14 : 1;
+        var color = BASINS[o.id].color;
+
+        ctx.strokeStyle = rgba(color, 0.78);
+        ctx.lineWidth = (isHl ? 0.95 : 0.62) / view.s;
+        ctx.stroke(o.p34);
+        ctx.lineWidth = (isHl ? 1.3 : 0.88) / view.s;
+        ctx.stroke(o.p5);
+
+        // 高亮流域：支流干线加流动光段（reduced-motion 静态）
+        if (isHl && !reduceMotion) {
+          ctx.setLineDash([3 / view.s, 15 / view.s]);
+          ctx.lineDashOffset = -((t / 90) % 18) / view.s;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+          ctx.lineWidth = 0.75 / view.s;
+          ctx.stroke(o.p5);
+          ctx.setLineDash([]);
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
     }
 
     function drawRivers(t) {
@@ -656,6 +743,16 @@
     }
 
     /* ================= 悬停 / 点按 ================= */
+    function segDistScreen(px, py, a, b) {
+      var ax = a[0] * view.s + view.tx, ay = a[1] * view.s + view.ty;
+      var bx = b[0] * view.s + view.tx, by = b[1] * view.s + view.ty;
+      var dx = bx - ax, dy = by - ay;
+      var L2 = dx * dx + dy * dy;
+      var t = L2 ? ((px - ax) * dx + (py - ay) * dy) / L2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    }
+
     function hitRiver(clientX, clientY) {
       var rect = stage.getBoundingClientRect();
       var x = clientX - rect.left, y = clientY - rect.top;
@@ -665,34 +762,54 @@
         var thr = Math.max(8, (r.w >= 3 ? 6 : r.w === 2 ? 5 : 3.5) + Math.sqrt(view.s / view.minS) * 2);
         r.segs.forEach(function (pts) {
           for (var i = 1; i < pts.length; i++) {
-            var d = segDist(x, y, pts[i - 1], pts[i]);
+            var d = segDistScreen(x, y, pts[i - 1], pts[i]);
             if (d < bestD && d < thr) { bestD = d; best = r; }
           }
         });
       });
-      return best;
-      function segDist(px, py, a, b) {
-        var ax = a[0] * view.s + view.tx, ay = a[1] * view.s + view.ty;
-        var bx = b[0] * view.s + view.tx, by = b[1] * view.s + view.ty;
-        var dx = bx - ax, dy = by - ay;
-        var L2 = dx * dx + dy * dy;
-        var t = L2 ? ((px - ax) * dx + (py - ay) * dy) / L2 : 0;
-        t = Math.max(0, Math.min(1, t));
-        return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+      if (best) return best;
+      return hitDense(x, y);
+    }
+
+    // 稠密支流命中：先按网格取候选线，再精确算点到线段距离
+    function hitDense(x, y) {
+      if (!DENSE.length) return null;
+      var c = DGRID.cell;
+      var cx = ((x - view.tx) / view.s / c) | 0;
+      var cy = ((y - view.ty) / view.s / c) | 0;
+      var seen = new Set(), cand = [];
+      for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+        var arr = DGRID.map.get((cy + dy) * 4096 + (cx + dx));
+        if (!arr) continue;
+        for (var i = 0; i < arr.length; i++) {
+          var ln = arr[i];
+          if (!seen.has(ln)) { seen.add(ln); cand.push(ln); }
+        }
       }
+      var best = null, bestD = 9;
+      cand.forEach(function (ln) {
+        if (!basinOn(ln.b)) return;
+        var pts = ln.pts;
+        for (var i = 1; i < pts.length; i++) {
+          var d = segDistScreen(x, y, pts[i - 1], pts[i]);
+          if (d < bestD) { bestD = d; best = ln; }
+        }
+      });
+      if (!best) return null;
+      return { dense: true, b: best.b, n: '', L: 0 };
     }
 
     function showRiverTooltip(r, clientX, clientY) {
       var rect = stage.getBoundingClientRect();
       tooltip.innerHTML = '';
       var b = document.createElement('b');
-      b.textContent = r.n || '未名支流';
+      b.textContent = r.dense ? '支流' : (r.n || '未名支流');
       tooltip.appendChild(b);
       tooltip.appendChild(document.createTextNode(' · '));
       var bn = document.createElement('i');
       bn.textContent = BASINS[r.b].name;
       tooltip.appendChild(bn);
-      tooltip.appendChild(document.createTextNode(' · ' + fmtKm(r.L)));
+      if (!r.dense) tooltip.appendChild(document.createTextNode(' · ' + fmtKm(r.L)));
       tooltip.style.left = (clientX - rect.left) + 'px';
       tooltip.style.top = (clientY - rect.top - 12) + 'px';
       tooltip.classList.add('show');
