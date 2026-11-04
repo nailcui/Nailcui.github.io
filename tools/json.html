@@ -9,9 +9,14 @@
   <title>JSON 格式化 · Nailcui 工具箱</title>
   <link rel="stylesheet" href="./tools.css">
   <style>
-    /* 全屏应用式布局：顶栏 + 双栏铺满 */
+    /* 全屏应用式布局：顶栏 + 双栏铺满（本页解除共用样式的 1280px 限宽，留 16px 边距） */
     body { overflow: hidden; }
-    .page { height: 100vh; height: 100dvh; min-height: 0; }
+    .page {
+      max-width: none;
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+    }
 
     .panes {
       flex: 1;
@@ -157,6 +162,7 @@
       .pane-head { padding: 8px 10px; letter-spacing: 0.06em; }
       .mini-btn { padding: 3px 7px; }
     }
+    .mini-btn[disabled] { opacity: 0.4; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -188,7 +194,10 @@
       <section class="pane pane-in">
         <div class="pane-head">
           <span>输入</span>
-          <span class="grow"><span class="pane-meta" id="inMeta">待输入</span></span>
+          <span class="grow">
+            <span class="pane-meta" id="inMeta">待输入</span>
+            <button class="mini-btn" id="btnCopyIn">复制输入</button>
+          </span>
         </div>
         <textarea id="jsonIn" spellcheck="false" autocapitalize="off" autocomplete="off"
           placeholder="在此粘贴 JSON 文本…&#10;&#10;左侧输入，右侧实时渲染折叠树；Ctrl/⌘ + Enter 快速格式化"></textarea>
@@ -227,6 +236,7 @@
   var btnFormat = document.getElementById('btnFormat');
   var btnMin = document.getElementById('btnMin');
   var btnCopy = document.getElementById('btnCopy');
+  var btnCopyIn = document.getElementById('btnCopyIn');
   var btnSample = document.getElementById('btnSample');
   var btnClear = document.getElementById('btnClear');
   var btnFold = document.getElementById('btnFold');
@@ -373,6 +383,7 @@
     tree.innerHTML = '';
     errCard.classList.add('hidden');
     btnFormat.disabled = btnMin.disabled = btnCopy.disabled = !state.parsed;
+    btnCopyIn.disabled = !v.length;
 
     if (state.error === 'empty') {
       outMeta.textContent = '—';
@@ -469,6 +480,9 @@
   btnUnfold.addEventListener('click', function () { setAllFolded(false); });
   btnCopy.addEventListener('click', function () {
     if (state.parsed) copyText(state.pretty, btnCopy);
+  });
+  btnCopyIn.addEventListener('click', function () {
+    if (input.value) copyText(input.value, btnCopyIn);
   });
   indentSel.addEventListener('change', render);
 
