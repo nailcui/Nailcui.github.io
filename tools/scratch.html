@@ -210,6 +210,131 @@
     .btn.ok { border-color: var(--line); color: var(--acc2); background: rgba(12, 127, 110, 0.08); }
     .btn.danger { border-color: rgba(199, 67, 60, 0.65); color: var(--danger); }
 
+    /* ---------- 按行去重弹窗 ---------- */
+    .dd-mask {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      padding-top: calc(env(safe-area-inset-top, 0px) + 20px);
+      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+      background: rgba(20, 20, 20, 0.32);
+      animation: ddmask 0.16s ease-out;
+    }
+    .dd-mask[hidden] { display: none; }
+    @keyframes ddmask { from { opacity: 0; } }
+
+    .dd-modal {
+      display: flex;
+      flex-direction: column;
+      width: 640px;
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 16px;
+      border: 1px solid var(--hair);
+      background: var(--panel);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18);
+      overflow: hidden;
+      animation: ddpop 0.18s ease-out;
+    }
+    @keyframes ddpop { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+
+    .dd-head {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 13px 12px 13px 16px;
+      border-bottom: 1px solid var(--hair);
+    }
+    .dd-head h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.1em; white-space: nowrap; }
+    .dd-meta {
+      flex: 1;
+      min-width: 0;
+      text-align: right;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dd-x {
+      flex: none;
+      width: 26px;
+      height: 26px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--ink-faint);
+      font-size: 13px;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .dd-x:hover { color: var(--ink); background: var(--panel-2); }
+
+    .dd-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+    .dd-row { display: flex; align-items: flex-start; gap: 10px; padding: 7px 16px; }
+    .dd-row + .dd-row { border-top: 1px solid var(--panel-2); }
+    .dd-n {
+      flex: none;
+      min-width: 30px;
+      margin-top: 2px;
+      padding: 1px 7px;
+      border: 1px solid var(--hair);
+      border-radius: 999px;
+      background: var(--panel-2);
+      color: var(--ink-faint);
+      font-family: var(--mono);
+      font-size: 11px;
+      text-align: center;
+    }
+    .dd-row.dup .dd-n {
+      border-color: var(--line);
+      background: rgba(12, 127, 110, 0.08);
+      color: var(--acc2);
+      font-weight: 700;
+    }
+    .dd-t {
+      flex: 1;
+      min-width: 0;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--ink);
+    }
+    .dd-row.empty .dd-t { color: var(--ink-faint); }
+
+    .dd-foot {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 16px;
+      border-top: 1px solid var(--hair);
+      background: var(--panel-2);
+    }
+    .dd-hint {
+      flex: 1;
+      min-width: 0;
+      font-size: 11px;
+      color: var(--ink-faint);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dd-foot .btn { flex: none; height: 30px; padding: 0 12px; font-size: 12px; }
+
     /* ---------- 移动端 ---------- */
     @media (max-width: 640px) {
       /* 16px 防止 iOS 聚焦时自动放大 */
@@ -220,6 +345,10 @@
       .f-opt { width: 27px; }
       .f-count { min-width: 38px; }
       .status { gap: 9px; }
+      .dd-mask { padding: 10px; padding-top: calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); }
+      .dd-head { padding-left: 14px; }
+      .dd-row { padding: 6px 14px; gap: 8px; }
+      .dd-foot { padding: 10px 14px; }
     }
   </style>
 </head>
@@ -233,6 +362,7 @@
       </div>
       <div class="actions">
         <button class="btn" id="btnCopy">复制</button>
+        <button class="btn" id="btnDedup">去重</button>
         <button class="btn" id="btnClear">清空</button>
       </div>
     </header>
@@ -270,6 +400,23 @@
       </div>
     </section>
 
+    <!-- 按行去重结果弹窗 -->
+    <div class="dd-mask" id="ddMask" hidden>
+      <div class="dd-modal" role="dialog" aria-modal="true" aria-label="按行去重结果">
+        <header class="dd-head">
+          <h2>按行去重</h2>
+          <span class="dd-meta" id="ddMeta"></span>
+          <button type="button" class="dd-x" id="ddX" title="关闭（Esc）" aria-label="关闭去重弹窗">✕</button>
+        </header>
+        <div class="dd-list" id="ddList"></div>
+        <footer class="dd-foot">
+          <span class="dd-hint" id="ddHint"></span>
+          <button type="button" class="btn" id="ddCopy">复制结果</button>
+          <button type="button" class="btn primary" id="ddApply">塞回白板</button>
+        </footer>
+      </div>
+    </div>
+
     <footer class="status">
       <span id="pos">行 1 · 列 1</span>
       <span id="sel" hidden></span>
@@ -294,12 +441,15 @@
   var fprev = $('fprev'), fnext = $('fnext'), fclose = $('fclose');
   var rrow = $('rrow'), rone = $('rone'), rall = $('rall');
   var posEl = $('pos'), selEl = $('sel'), statsEl = $('stats'), savedEl = $('saved'), wrapBtn = $('wrapBtn');
-  var btnCopy = $('btnCopy'), btnClear = $('btnClear');
+  var btnCopy = $('btnCopy'), btnDedup = $('btnDedup'), btnClear = $('btnClear');
+  var ddMask = $('ddMask'), ddMeta = $('ddMeta'), ddList = $('ddList'), ddHint = $('ddHint');
+  var ddCopy = $('ddCopy'), ddApply = $('ddApply'), ddX = $('ddX');
 
   var STORE_KEY = 'tools:scratch:text';
   var WRAP_KEY = 'tools:scratch:wrap';
   var COUNT_CAP = 100000;   // 最多统计的匹配数（全部替换不受此限）
   var RENDER_CAP = 3000;    // 最多内联高亮的匹配数
+  var DD_RENDER_CAP = 5000; // 去重弹窗最多展示的行数（复制/塞回不受此限）
 
   var st = {
     open: false, showReplace: false,
@@ -309,6 +459,7 @@
   };
   var refreshT = 0, saveT = 0, savedT = 0, countT = 0, armT = 0;
   var lastField = fq;
+  var ddRes = ''; // 去重结果（纯行文本，不含次数徽标）
 
   /* ---------- 启动：恢复本机保存的内容 ---------- */
   try { txt.value = localStorage.getItem(STORE_KEY) || ''; } catch (e) { /* 隐私模式等 */ }
@@ -671,10 +822,89 @@
   rall.addEventListener('click', replaceAll);
   wrapBtn.addEventListener('click', toggleWrap);
 
+  /* ---------- 按行去重 ---------- */
+  function computeDedup() {
+    var lines = txt.value.split('\n');
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop(); // 结尾单个换行不算空行
+    var map = new Map();
+    for (var i = 0; i < lines.length; i++) {
+      var e = map.get(lines[i]);
+      if (e) e.c++;
+      else map.set(lines[i], { c: 1, f: i }); // c=次数 f=首现行号（同次数按首现排序）
+    }
+    var rows = [];
+    map.forEach(function (v, k) { rows.push({ line: k, c: v.c, f: v.f }); });
+    rows.sort(function (a, b) { return b.c - a.c || a.f - b.f; });
+    return { rows: rows, total: lines.length };
+  }
+  function openDedup() {
+    if (!txt.value) { flashBtn(btnDedup, '空空如也'); return; }
+    var r = computeDedup();
+    ddRes = r.rows.map(function (x) { return x.line; }).join('\n');
+    ddMeta.textContent = r.total + ' 行 → ' + r.rows.length + ' 行 · 去除 ' + (r.total - r.rows.length) + ' 行重复';
+    ddHint.textContent = r.rows.length > DD_RENDER_CAP
+      ? '仅展示前 ' + DD_RENDER_CAP + ' 行 · 复制 / 塞回仍包含全部 ' + r.rows.length + ' 行'
+      : '按出现次数降序 · 复制 / 塞回为纯行文本，不含行首次数';
+    var html = [], n = Math.min(r.rows.length, DD_RENDER_CAP);
+    for (var i = 0; i < n; i++) {
+      var x = r.rows[i], empty = x.line === '';
+      html.push('<div class="dd-row' + (x.c > 1 ? ' dup' : '') + (empty ? ' empty' : '') + '">'
+        + '<span class="dd-n">' + x.c + '</span>'
+        + '<span class="dd-t">' + (empty ? '（空行）' : escText(x.line)) + '</span></div>');
+    }
+    ddList.innerHTML = html.join('');
+    ddList.scrollTop = 0;
+    ddMask.hidden = false;
+  }
+  function closeDedup() {
+    ddMask.hidden = true;
+    ddList.innerHTML = '';
+    txt.focus();
+  }
+  ddX.addEventListener('click', closeDedup);
+  ddMask.addEventListener('mousedown', function (e) { if (e.target === ddMask) closeDedup(); });
+  btnDedup.addEventListener('click', openDedup);
+  ddCopy.addEventListener('click', function () {
+    var fallback = function () {
+      var ta = document.createElement('textarea');
+      ta.value = ddRes;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-999px;left:-999px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      flashBtn(ddCopy, ok ? '已复制' : '复制失败');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ddRes).then(function () { flashBtn(ddCopy, '已复制'); }, fallback);
+    } else fallback();
+  });
+  ddApply.addEventListener('click', function () {
+    txt.focus();
+    txt.setSelectionRange(0, txt.value.length);
+    var ok = false;
+    try { ok = document.execCommand('insertText', false, ddRes); } catch (e) { ok = false; }
+    if (!ok) { // execCommand 不可用（旧 Firefox 等）：直接替换，补一次手动统计与保存
+      txt.value = ddRes;
+      txt.selectionStart = txt.selectionEnd = 0;
+      onEdited();
+    }
+    closeDedup();
+    updateStats();
+    saveNow();
+    flashBtn(btnDedup, '已塞回');
+  });
+
   /* 全局快捷键 */
   document.addEventListener('keydown', function (e) {
     var mod = e.metaKey || e.ctrlKey;
     var k = e.key;
+    if (!ddMask.hidden) { // 去重弹窗打开时只响应 Esc 关闭，屏蔽其余快捷键
+      if (k === 'Escape') { e.preventDefault(); closeDedup(); }
+      return;
+    }
     if (mod && !e.altKey && (k === 'f' || k === 'F')) { e.preventDefault(); openFind(false); return; }
     if (mod && !e.altKey && (k === 'h' || k === 'H')) { e.preventDefault(); openFind(true); return; }
     if (k === 'F3') {
