@@ -62,6 +62,23 @@
     .tp-row label { flex: none; width: 30px; font-size: 11px; color: var(--ink-dim); }
     .tp-row input[type="range"] { flex: 1; min-width: 0; height: 22px; accent-color: #4df0d8; cursor: pointer; }
     .tp-row b { flex: none; width: 34px; text-align: right; font-family: var(--mono); font-size: 11px; color: var(--ink); }
+    /* 测试时受力方向图例 */
+    .force-legend {
+      position: absolute; top: 48px; left: 10px; z-index: 3;
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 12px;
+      border-radius: 999px; border: 1px solid var(--hair);
+      background: rgba(8, 16, 26, 0.82);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      font-size: 11px; color: var(--ink-dim); letter-spacing: 0.05em;
+    }
+    .fl-item { display: inline-flex; align-items: center; gap: 5px; }
+    .fl-sw { display: inline-block; width: 26px; height: 6px; border-radius: 3px; }
+    .fl-t { background: linear-gradient(90deg, rgb(214, 148, 66), rgb(255, 64, 56)); }
+    .fl-p { background: linear-gradient(90deg, rgb(70, 160, 230), rgb(168, 86, 255)); }
+    .fl-note { color: var(--ink-faint); font-size: 10px; }
+    .dual-legend { display: flex; flex-direction: column; gap: 8px; width: min(320px, 90%); }
+    .dual-legend span { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; line-height: 1.6; }
     .vbtn {
       width: 30px; height: 30px; padding: 0; justify-content: center;
       border-radius: 10px; font-size: 14px; line-height: 1;
@@ -171,10 +188,6 @@
     .help-cards p, .help-cards li { font-size: 12.5px; line-height: 1.9; color: var(--ink-dim); }
     .help-cards ul { padding-left: 18px; }
     .help-cards .mat-line { display: inline-block; width: 22px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
-    .stress-bar {
-      width: min(300px, 80%); height: 8px; border-radius: 4px; margin: 2px auto 0;
-      background: linear-gradient(90deg, #3ecf8e, #e8c34b, #ff5a5a);
-    }
     .kbd {
       display: inline-block; padding: 1px 7px; border-radius: 6px; margin: 0 2px;
       border: 1px solid var(--hair); background: rgba(255, 255, 255, 0.05);
@@ -220,6 +233,11 @@
         <div class="tp-row"><label>谷宽</label><input type="range" id="tGap" min="4" max="12" step="1" value="7"><b id="tGapV">14m</b></div>
         <div class="tp-row"><label>左岸</label><input type="range" id="tHL" min="-1" max="2" step="1" value="0"><b id="tHLV">0m</b></div>
         <div class="tp-row"><label>右岸</label><input type="range" id="tHR" min="-1" max="2" step="1" value="0"><b id="tHRV">0m</b></div>
+      </div>
+      <div class="force-legend" id="forceLegend" hidden>
+        <span class="fl-item"><i class="fl-sw fl-t"></i>受拉</span>
+        <span class="fl-item"><i class="fl-sw fl-p"></i>受压</span>
+        <span class="fl-note">越亮越接近断裂</span>
       </div>
       <div class="float-view">
         <button class="btn vbtn" id="zin" type="button" title="放大">＋</button>
@@ -283,9 +301,12 @@
               <li><span class="mat-line" style="background:#8ea3bd"></span><b>钢梁 ¥95/m</b>：最强构件，适合大跨度主力。</li>
               <li><span class="mat-line" style="background:#d7dee8"></span><b>钢索 ¥38/m</b>：只能受拉不能受压，适合吊在高处锚点做拉索；长度不限，可从远处锚点直拉长跨（按米计价）。</li>
             </ul>
-            <h4>应力图例</h4>
-            <div class="stress-bar"></div>
-            <p style="text-align:center">绿 → 黄 → 红：越红越接近断裂</p>
+            <h4>受力图例（测试时）</h4>
+            <div class="dual-legend">
+              <span><i class="fl-sw fl-t"></i><b>受拉</b>（构件被拉长）：琥珀 → 红</span>
+              <span><i class="fl-sw fl-p"></i><b>受压</b>（构件被压短）：蓝 → 紫</span>
+            </div>
+            <p style="text-align:center">颜色越亮受力越大、越接近断裂（超过 85% 会闪烁）；钢索只受拉，松驰时恢复原色。</p>
             <h4>技巧</h4>
             <ul>
               <li>三角形桁架最稳——把桥面下的斜撑连成三角，力才能传到两岸锚点。</li>
@@ -523,6 +544,9 @@
         Math.round(c1[2] + (c2[2] - c1[2]) * t) + ')';
     }
     var C_GREEN = [62, 207, 142], C_YEL = [232, 195, 75], C_RED = [255, 90, 90];
+    // 受力双色：受拉=琥珀→红（构件被拉长），受压=蓝→紫（被压短），亮度随受力增大
+    var T_LOW = [214, 148, 66], T_HIGH = [255, 64, 56];
+    var P_LOW = [70, 160, 230], P_HIGH = [168, 86, 255];
     function stressColor(s) {
       s = clamp(s, 0, 1);
       return s < 0.5 ? mixc(C_GREEN, C_YEL, s * 2) : mixc(C_YEL, C_RED, (s - 0.5) * 2);
@@ -538,7 +562,7 @@
     var stopBtn = $('stopBtn'), retryBtn = $('retryBtn'), followBtn = $('followBtn'), slowBtn = $('slowBtn');
     var carBtn = $('carBtn'), truckBtn = $('truckBtn'), vehSep = $('vehSep');
     var ovLevels = $('ovLevels'), ovHelp = $('ovHelp'), ovEnd = $('ovEnd');
-    var terraPanel = $('terraPanel'), pierBtn = $('pierBtn');
+    var terraPanel = $('terraPanel'), pierBtn = $('pierBtn'), forceLegend = $('forceLegend');
     var tGap = $('tGap'), tHL = $('tHL'), tHR = $('tHR'), tGapV = $('tGapV'), tHLV = $('tHLV'), tHRV = $('tHRV');
     var hint = $('hint'), toastEl = $('toast');
     var REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -801,6 +825,7 @@
       computeMasses();
       syncBars();
       elMaxChip.hidden = false;
+      forceLegend.hidden = false;
       hideOverlays();
     }
     function stopTest(silent) {
@@ -810,6 +835,7 @@
       mode = 'build';
       syncBars();
       elMaxChip.hidden = true;
+      forceLegend.hidden = true;
       if (!silent) refreshBudget();
     }
     function makeVehicle(kind) {
@@ -864,6 +890,7 @@
       if (b.mat.cable && C < 0) { b.lam = 0; b.stress = 0; return; } // 钢索不受压
       var strain = C / b.rest;
       b.stress = Math.abs(strain) / b.mat.lim;
+      b.tens = strain > 0; // 受拉为正、受压为负（着色区分）
       var w = b.na.invM + b.nb.invM;
       var at = b.mat.alpha / (h * h);
       var denom = w + at;
@@ -973,7 +1000,8 @@
           if (b.broken) return;
           var len = hyp(b.nb.x - b.na.x, b.nb.y - b.na.y);
           var strain = (len - b.rest) / b.rest;
-          if (!(b.mat.cable && strain < 0)) b.stress = Math.abs(strain) / b.mat.lim;
+          if (b.mat.cable && strain < 0) { b.stress = 0; b.tens = false; }
+          else { b.stress = Math.abs(strain) / b.mat.lim; b.tens = strain > 0; }
         });
         return;
       }
@@ -981,7 +1009,8 @@
         if (b.broken) return;
         var len = hyp(b.nb.x - b.na.x, b.nb.y - b.na.y);
         var strain = (len - b.rest) / b.rest;
-        if (!(b.mat.cable && strain < 0)) b.stress = Math.abs(strain) / b.mat.lim;
+        if (b.mat.cable && strain < 0) { b.stress = 0; b.tens = false; } // 松驰钢索不着色
+        else { b.stress = Math.abs(strain) / b.mat.lim; b.tens = strain > 0; }
         var over = b.mat.cable ? strain > b.mat.lim : Math.abs(strain) > b.mat.lim;
         if (over) { breakBeam(b); broke = true; }
       });
@@ -1289,7 +1318,7 @@
     function segScreen(a, b) {
       return [w2sx(a.i * GRID), w2sy(a.j * GRID), w2sx(b.i * GRID), w2sy(b.j * GRID)];
     }
-    function drawBeamStyle(s, matId, stress, alpha, isHover) {
+    function drawBeamStyle(s, matId, stress, alpha, isHover, tens, now) {
       var m = MATS[matId];
       var lw = Math.max(2.5, m.thick * cam.s);
       ctx.globalAlpha = alpha;
@@ -1323,10 +1352,13 @@
         ctx.lineWidth = Math.max(1.4, m.thick * cam.s);
         ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
       }
-      // 应力着色（测试模式）
+      // 受力着色（测试模式）：受拉=琥珀→红，受压=蓝→紫；越亮受力越大，濒断闪烁
       if (stress !== null && stress > 0.03) {
-        ctx.strokeStyle = stressColor(stress);
-        ctx.globalAlpha = alpha * (0.3 + 0.65 * clamp(stress, 0, 1));
+        var st = clamp(stress, 0, 1);
+        ctx.strokeStyle = tens ? mixc(T_LOW, T_HIGH, st) : mixc(P_LOW, P_HIGH, st);
+        var fa = alpha * (0.32 + 0.62 * st);
+        if (st > 0.85 && now !== null && !REDUCED) fa *= 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(now * 0.012));
+        ctx.globalAlpha = fa;
         ctx.lineWidth = lw * 0.92;
         ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(s[2], s[3]); ctx.stroke();
       }
@@ -1530,7 +1562,7 @@
           if (b.broken) return;
           var na = { i: b.na.x / GRID, j: b.na.y / GRID }, nb = { i: b.nb.x / GRID, j: b.nb.y / GRID };
           var s = [w2sx(b.na.x), w2sy(b.na.y), w2sx(b.nb.x), w2sy(b.nb.y)];
-          drawBeamStyle(s, b.mat.id, b.stress, 1, false);
+          drawBeamStyle(s, b.mat.id, b.stress, 1, false, b.tens, now);
         });
         drawParts();
         drawAnchors();
@@ -1891,6 +1923,8 @@
           status: sim ? sim.status : null, t: sim ? Math.round(sim.t * 10) / 10 : 0,
           vehX: sim ? Math.round(((sim.veh.w1.x + sim.veh.w2.x) / 2) * 10) / 10 : null,
           broken: sim ? sim.beams.filter(function (b) { return b.broken; }).length : 0,
+          nTens: sim ? sim.beams.filter(function (b) { return !b.broken && b.stress > 0.05 && b.tens; }).length : 0,
+          nComp: sim ? sim.beams.filter(function (b) { return !b.broken && b.stress > 0.05 && !b.tens; }).length : 0,
           brokenDetail: sim ? sim.beams.filter(function (b) { return b.broken; }).map(function (b) {
             return b.na.key + '~' + b.nb.key + ':' + b.mat.id;
           }) : [],
