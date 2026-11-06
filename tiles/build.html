@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbf7f0">
+<title>搭建教学 · 磁力片搭建</title>
+<link rel="stylesheet" href="tiles.css">
+<style>
+  body { overflow-x: hidden; }
+  .bd { display: grid; grid-template-columns: minmax(0, 1fr) 408px; height: calc(100vh - 59px); height: calc(100dvh - 59px - env(safe-area-inset-top, 0px)); }
+  .stage {
+    position: relative; min-height: 0;
+    background: radial-gradient(90% 80% at 50% 42%, #fffdf8 0%, #f8f2e8 62%, #f1e9dc 100%);
+    border-right: 1px solid var(--line);
+  }
+  .stage .tv { position: absolute; inset: 0; }
+  .st-chip {
+    position: absolute; left: 16px; top: 14px; z-index: 3; display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px 6px 12px; border-radius: 999px; background: rgba(255, 255, 255, .88); border: 1px solid var(--line);
+    font-size: 13.5px; color: var(--ink-2); pointer-events: none; box-shadow: 0 2px 8px -4px rgba(70, 52, 28, .2);
+  }
+  .st-chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--pri); }
+  .st-chip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .st-views {
+    position: absolute; right: 16px; top: 14px; z-index: 3; display: flex; gap: 2px; padding: 3px;
+    border-radius: 999px; background: rgba(255, 255, 255, .88); border: 1px solid var(--line);
+  }
+  .st-views button {
+    border: 0; background: none; padding: 6px 12px; border-radius: 999px; font-size: 13px; color: var(--ink-2);
+    cursor: pointer; min-height: 32px; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .st-views button:hover { background: var(--bg-2); color: var(--ink); }
+  .st-ctl { position: absolute; right: 16px; bottom: 16px; z-index: 3; display: flex; align-items: center; gap: 8px; }
+  .zoom { display: flex; border-radius: 12px; background: rgba(255, 255, 255, .92); border: 1px solid var(--line-2); overflow: hidden; }
+  .zoom button {
+    width: 44px; height: 42px; border: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .zoom button + button { border-left: 1px solid var(--line); }
+  .zoom button:hover { background: var(--bg-2); }
+  .zoom svg { width: 19px; height: 19px; }
+  .rec {
+    display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border-radius: 12px;
+    border: 1px solid var(--line-2); background: rgba(255, 255, 255, .92); cursor: pointer; font-size: 13.5px; color: var(--ink-2);
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .rec:hover { background: var(--bg-2); color: var(--ink); }
+  .rec svg { width: 17px; height: 17px; }
+  .st-hint { position: absolute; left: 16px; bottom: 18px; z-index: 2; margin: 0; font-size: 12.5px; color: var(--ink-3); pointer-events: none; transition: opacity .4s; }
+
+  .panel { min-height: 0; overflow-y: auto; padding: 22px 24px 30px; background: var(--card); -webkit-overflow-scrolling: touch; }
+  .crumb { font-size: 13px; color: var(--ink-3); }
+  .crumb a { color: var(--ink-3); text-decoration: none; }
+  .crumb a:hover { color: var(--pri-d); }
+  .ph-row { display: flex; align-items: flex-start; gap: 12px; margin-top: 4px; }
+  .ph-row h1 { margin: 0; font-size: 26px; line-height: 1.3; letter-spacing: .01em; flex: 1; min-width: 0; }
+  .fav {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; border-radius: 999px;
+    border: 1px solid var(--line-2); background: var(--card); cursor: pointer; font-size: 13.5px; color: var(--ink-2);
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .fav svg { width: 17px; height: 17px; }
+  .fav.on { color: var(--coral); border-color: #f6c7be; background: #fff6f4; }
+  .fav.on svg path { fill: currentColor; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; margin: 18px 0 14px; border-radius: 12px; background: var(--bg-2); }
+  .seg button {
+    border: 0; background: none; height: 40px; border-radius: 9px; cursor: pointer; font-size: 14.5px; color: var(--ink-2);
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .seg button.on { background: var(--card); color: var(--ink); font-weight: 650; box-shadow: 0 1px 3px rgba(70, 52, 28, .14); }
+
+  .card { border: 1px solid var(--line); border-radius: var(--r); padding: 16px 16px 14px; background: #fff; }
+  .sc-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+  .sc-stage { font-size: 13.5px; color: var(--ink-2); min-width: 0; }
+  .sc-stage b { color: var(--pri-d); font-weight: 600; }
+  .sc-num { font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1; }
+  .sc-num b { font-size: 34px; font-weight: 600; letter-spacing: -.01em; }
+  .sc-num small { font-size: 15px; color: var(--ink-3); margin-left: 4px; }
+  .prog { margin: 14px 0 6px; position: relative; }
+  .prog input { width: 100%; margin: 0; -webkit-appearance: none; appearance: none; height: 30px; background: none; cursor: pointer; touch-action: pan-y; }
+  .prog input::-webkit-slider-runnable-track { height: 8px; border-radius: 8px; background: linear-gradient(90deg, var(--pri) var(--p, 0%), #e8e0d3 var(--p, 0%)); }
+  .prog input::-moz-range-track { height: 8px; border-radius: 8px; background: #e8e0d3; }
+  .prog input::-moz-range-progress { height: 8px; border-radius: 8px; background: var(--pri); }
+  .prog input::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 24px; height: 24px; margin-top: -8px; border-radius: 50%;
+    background: #fff; border: 3px solid var(--pri); box-shadow: 0 2px 6px rgba(14, 159, 142, .35);
+  }
+  .prog input::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--pri); }
+  .ticks { position: relative; height: 8px; margin: 0 11px; }
+  .ticks i { position: absolute; top: 0; width: 2px; height: 7px; border-radius: 2px; background: var(--line-2); transform: translateX(-1px); }
+  .piece-line { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; color: var(--ink-2); flex-wrap: wrap; }
+  .piece-line b { color: var(--ink); font-weight: 600; }
+  .piece-line .warn { font-size: 12px; padding: 0 8px; border-radius: 999px; background: #fdf0d9; color: #9a5c06; line-height: 1.8; }
+  .sc-text { margin: 8px 0 0; font-size: 15.5px; line-height: 1.75; color: var(--ink); min-height: 3.5em; }
+  .sc-done { display: inline-block; margin-top: 6px; font-size: 13.5px; color: var(--pri-d); font-weight: 600; }
+  .ctrl { display: grid; grid-template-columns: 52px 1fr 52px; gap: 10px; margin-top: 10px; }
+  .ctrl .ibtn { width: 52px; height: 50px; border-radius: 14px; }
+  .ctrl .btn { min-height: 50px; border-radius: 14px; font-size: 16px; }
+  .ctrl .btn.playing { background: var(--ink); box-shadow: none; }
+  .sub { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); flex-wrap: wrap; }
+  .link {
+    border: 0; background: none; padding: 6px 2px; color: var(--ink-2); font-size: 13.5px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px; -webkit-tap-highlight-color: transparent;
+  }
+  .link:hover { color: var(--pri-d); }
+  .link svg { width: 15px; height: 15px; }
+  .speed { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; color: var(--ink-3); }
+  .speed button {
+    border: 1px solid transparent; background: none; padding: 3px 8px; border-radius: 8px; font-size: 13px; color: var(--ink-2);
+    cursor: pointer; min-height: 32px; font-variant-numeric: tabular-nums; touch-action: manipulation;
+  }
+  .speed button.on { border-color: var(--line-2); background: var(--bg-2); color: var(--ink); font-weight: 600; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); cursor: pointer; user-select: none; min-height: 32px; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .switch i { width: 36px; height: 21px; border-radius: 999px; background: #ddd3c4; position: relative; transition: background .15s; flex: none; }
+  .switch i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 17px; height: 17px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0, 0, 0, .2); }
+  .switch input:checked + i { background: var(--pri); }
+  .switch input:checked + i::after { transform: translateX(15px); }
+  .switch input:focus-visible + i { outline: 2.5px solid var(--pri); outline-offset: 2px; }
+  .sub2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; flex-wrap: wrap; }
+
+  .full-intro { margin: 0; font-size: 15px; line-height: 1.75; }
+  .tip { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: #fff8e8; color: #7a5410; font-size: 13.5px; line-height: 1.7; }
+  .tip b { font-weight: 650; }
+  .sum { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 14px 0 2px; font-size: 14px; color: var(--ink-2); }
+  .sum span { display: inline-flex; align-items: center; gap: 5px; }
+  .full-act { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .full-act .btn { flex: 1; min-width: 150px; }
+
+  .sect { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--r); background: #fff; }
+  .sect > summary {
+    list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 13px 16px; font-weight: 650; font-size: 15px; -webkit-tap-highlight-color: transparent;
+  }
+  .sect > summary::-webkit-details-marker { display: none; }
+  .sect > summary span { font-weight: 400; color: var(--ink-3); font-size: 13px; margin-left: auto; }
+  .sect > summary::after {
+    content: ""; width: 8px; height: 8px; border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3);
+    transform: rotate(45deg) translateY(-2px); transition: transform .15s; flex: none;
+  }
+  .sect[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+  .stages { list-style: none; margin: 0; padding: 0 8px 8px; }
+  .stages button {
+    width: 100%; display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 10px; text-align: left;
+    border: 0; background: none; padding: 9px 8px; border-radius: 10px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  .stages button:hover { background: var(--bg); }
+  .stages .no {
+    width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 12.5px; font-weight: 600; background: var(--bg-2); color: var(--ink-3);
+  }
+  .stages .t { font-size: 14.5px; color: var(--ink); line-height: 1.4; }
+  .stages .d { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 2px; line-height: 1.5; }
+  .stages .r { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .stages li.done .no { background: var(--pri-soft); color: var(--pri-d); }
+  .stages li.cur button { background: var(--pri-soft); }
+  .stages li.cur .no { background: var(--pri); color: #fff; }
+  .mats { list-style: none; margin: 0; padding: 0 16px 12px; }
+  .mats li { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .mats li:first-child { border-top: 0; }
+  .mats .nm { font-size: 14px; }
+  .mats .bar { display: block; height: 5px; border-radius: 5px; background: #eee7dc; margin-top: 5px; overflow: hidden; }
+  .mats .bar i { display: block; height: 100%; border-radius: 5px; background: var(--pri); }
+  .mats .ct { font-size: 13.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mats .ct b { color: var(--ink); }
+  .mats li.now { background: linear-gradient(90deg, var(--pri-soft), transparent); margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+  .mat-note { margin: 0; padding: 0 16px 14px; font-size: 12.5px; color: var(--ink-3); line-height: 1.7; }
+  .verify { margin: 16px 2px 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.75; }
+  .missing { max-width: 420px; margin: 80px auto; text-align: center; padding: 0 20px; }
+
+  @media (max-width: 959px) {
+    .top { position: relative; }
+    .bd { display: block; height: auto; }
+    .stage { position: sticky; top: 0; z-index: 5; height: 42vh; height: clamp(240px, 42svh, 420px); border-right: 0; border-bottom: 1px solid var(--line); }
+    .panel { overflow: visible; height: auto; padding: 12px 16px calc(28px + env(safe-area-inset-bottom, 0px)); }
+    .ph-row h1 { font-size: 21px; }
+    .fav { height: 34px; padding: 0 12px; }
+    .meta { margin-top: 6px; }
+    .seg { margin: 12px 0 10px; }
+    .seg button { height: 36px; }
+    .card { padding: 14px 14px 12px; }
+    .sc-num b { font-size: 30px; }
+    .prog { margin: 10px 0 4px; }
+    .st-chip { left: 10px; top: 10px; font-size: 12.5px; padding: 5px 11px 5px 10px; }
+    .st-views { right: 10px; top: 10px; }
+    .st-views button { padding: 5px 10px; font-size: 12.5px; }
+    .st-ctl { right: 10px; bottom: 10px; gap: 6px; }
+    .zoom button { width: 40px; height: 40px; }
+    .rec { height: 42px; padding: 0 11px; font-size: 12.5px; }
+    .st-hint { left: 12px; top: 50px; bottom: auto; font-size: 11.5px; }
+    .crumb { display: none; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="11" width="13" height="13" rx="2.5" fill="#ee6a55" fill-opacity=".3" stroke="#ee6a55" stroke-width="2"/><rect x="10" y="4" width="13" height="13" rx="2.5" fill="#f2ac2a" fill-opacity=".3" stroke="#f2ac2a" stroke-width="2"/><rect x="16" y="14" width="13" height="13" rx="2.5" fill="#0e9f8e" fill-opacity=".26" stroke="#0e9f8e" stroke-width="2"/></svg>
+      <span><b>磁力片搭建</b><small>亲子 3D 搭建指南</small></span>
+    </a>
+    <nav class="nav">
+      <a href="library.html">造型库</a>
+      <a href="mytiles.html">我的磁片</a>
+      <a class="home" href="../" title="回到博客主页">←<span> 主页</span></a>
+    </nav>
+  </div>
+</header>
+
+<main class="bd" id="bd">
+  <section class="stage" aria-label="3D 模型">
+    <div class="tv" id="tv"><div class="tv-loading" id="loading">正在准备 3D 模型…</div></div>
+    <div class="st-chip" id="stChip" hidden><i></i><span id="stChipText"></span></div>
+    <div class="st-views" role="group" aria-label="快捷视角">
+      <button type="button" data-view="front">正面</button>
+      <button type="button" data-view="side">侧面</button>
+      <button type="button" data-view="top">俯视</button>
+    </div>
+    <p class="st-hint" id="stHint">拖动旋转 · 滚轮或双指缩放</p>
+    <div class="st-ctl">
+      <button type="button" class="rec" id="recBtn" title="切到这一步的推荐观察角度">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>推荐角度</span>
+      </button>
+      <div class="zoom" role="group" aria-label="缩放">
+        <button type="button" id="zOut" aria-label="缩小"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+        <button type="button" id="zReset" aria-label="复位视角" title="复位视角"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="6.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+        <button type="button" id="zIn" aria-label="放大"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel" id="panel">
+    <div class="crumb"><a href="library.html">造型库</a> / <a id="crumbTheme" href="library.html"></a></div>
+    <div class="ph-row">
+      <h1 id="title"></h1>
+      <button type="button" class="fav" id="favBtn" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 8 3.6 4.5 7.2 4.5c2 0 3.4 1.1 4.8 2.8 1.4-1.7 2.8-2.8 4.8-2.8 3.6 0 5.8 3.5 4.5 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg><span>收藏</span>
+      </button>
+    </div>
+    <div class="meta" id="meta"></div>
+
+    <div class="seg" role="tablist" aria-label="展示方式">
+      <button type="button" role="tab" data-mode="full" id="modeFull">完整造型</button>
+      <button type="button" role="tab" data-mode="steps" id="modeSteps">分步搭建</button>
+    </div>
+
+    <section class="card" id="fullCard" hidden>
+      <p class="full-intro" id="intro"></p>
+      <div class="sum" id="sum"></div>
+      <p class="tip" id="tip"></p>
+      <div class="full-act">
+        <button type="button" class="btn" id="startBtn"></button>
+      </div>
+    </section>
+
+    <section class="card" id="stepCard" hidden>
+      <div class="sc-top">
+        <div class="sc-stage" id="scStage"></div>
+        <div class="sc-num"><b id="scNow">1</b><small id="scTotal">/ 1</small></div>
+      </div>
+      <div class="prog">
+        <input type="range" id="prog" min="1" max="1" value="1" step="1" aria-label="搭建进度，拖动跳到任意一步">
+        <div class="ticks" id="ticks" aria-hidden="true"></div>
+      </div>
+      <!-- 控制按钮放在说明文字上方：说明长短变化时按钮位置不跳动，连点「下一步」不会点空 -->
+      <div class="ctrl">
+        <button type="button" class="ibtn" id="prevBtn" aria-label="上一步"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+        <button type="button" class="btn" id="playBtn"></button>
+        <button type="button" class="ibtn" id="nextBtn" aria-label="下一步"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="piece-line" id="pieceLine"></div>
+      <p class="sc-text" id="scText" aria-live="polite"></p>
+      <div class="sub">
+        <button type="button" class="link" id="restartBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>从第一片开始</button>
+        <div class="speed" role="group" aria-label="自动演示速度">速度
+          <button type="button" data-sp="0.5">0.5×</button><button type="button" data-sp="1">1×</button><button type="button" data-sp="2">2×</button>
+        </div>
+      </div>
+      <div class="sub2">
+        <label class="switch"><input type="checkbox" id="ghostChk"><i></i>显示后续轮廓</label>
+        <span class="speed" id="usedInfo"></span>
+      </div>
+    </section>
+
+    <details class="sect" id="stageSect">
+      <summary>搭建阶段<span id="stageCount"></span></summary>
+      <ol class="stages" id="stages"></ol>
+    </details>
+    <details class="sect" id="matSect">
+      <summary>所需磁力片<span id="matCount"></span></summary>
+      <ul class="mats" id="mats"></ul>
+      <p class="mat-note">数量由模型零件数据自动统计。颜色只是参考，手边颜色不够可以换成同形状的其它颜色。</p>
+    </details>
+    <p class="verify" id="verify"></p>
+  </aside>
+</main>
+
+<script src="three.min.js"></script>
+<script src="tiles-core.js"></script>
+<script src="tiles-models.js"></script>
+<script src="tiles3d.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = TilesCore, $ = function (id) { return document.getElementById(id); };
+  var qs = new URLSearchParams(location.search);
+  var model = TilesModels.get(qs.get('id') || 'house');
+  if (!model) {
+    $('bd').innerHTML = '<div class="missing"><p style="font-size:40px;margin:0">🧩</p><h1 style="font-size:20px">没有找到这个造型</h1>' +
+      '<p style="color:var(--ink-3)">可能链接有误，去造型库重新挑一个吧。</p><a class="btn" href="library.html">打开造型库</a></div>';
+    return;
+  }
+  var P = model.pieces, N = P.length;
+  var ICON = {
+    play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.8v14.4c0 .8.9 1.3 1.6.8l11-7.2c.6-.4.6-1.3 0-1.7l-11-7.1C7.9 3.5 7 4 7 4.8z"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4.2" height="15" rx="1.2"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.2"/></svg>'
+  };
+  var desktop = window.matchMedia('(min-width: 960px)');
+
+  document.title = model.name + ' · 磁力片搭建';
+  $('title').textContent = model.name;
+  $('crumbTheme').textContent = C.THEMES[model.theme].name;
+  $('crumbTheme').href = 'library.html?theme=' + model.theme;
+  $('meta').innerHTML =
+    '<span class="tag lv' + model.level + '">' + C.LEVELS[model.level] + '</span>' +
+    '<span class="tag">' + N + ' 片</span>' +
+    '<span class="tag">' + C.THEMES[model.theme].icon + ' ' + C.THEMES[model.theme].name + '</span>' +
+    '<span class="tag">' + model.stages.length + ' 个阶段</span>';
+  $('intro').textContent = model.intro;
+  $('tip').innerHTML = '<b>家长小贴士：</b>' + C.esc(model.tip);
+  $('sum').innerHTML = C.TYPE_ORDER.filter(function (t) { return model.stats.byType[t]; }).map(function (t) {
+    return '<span>' + C.typeIcon(t, null, 18) + C.TYPES[t].name + ' <b>' + model.stats.byType[t] + '</b></span>';
+  }).join('');
+  $('verify').textContent = '结构说明：零件尺寸统一（正方形与三角形边长相同），每一片都与之前的零件整边相接或直接落地，搭建顺序已人工核对；' +
+    '但未做承重或稳定性仿真，悬挑的小片需要轻轻扶正，搭建时请家长在旁陪同。';
+  $('stageCount').textContent = model.stages.length + ' 个阶段';
+  $('matCount').textContent = '共 ' + N + ' 片';
+  $('prog').max = N;
+  $('scTotal').textContent = '/ ' + N;
+  // 阶段分界刻度
+  $('ticks').innerHTML = model.stages.slice(1).map(function (s) {
+    return '<i style="left:' + (N > 1 ? (s.from) / (N - 1) * 100 : 0) + '%"></i>';
+  }).join('');
+
+  // 状态：mode = full | steps；k = 已放置片数（1..N）
+  var saved = C.getProgress(model.id);
+  var state = {
+    mode: saved ? 'steps' : 'full',
+    k: saved ? Math.max(1, Math.min(N, saved.step)) : 1,
+    ghost: !!C.store.get('tiles:ghost', false),
+    speed: C.store.get('tiles:speed', 1) || 1,
+    playing: false
+  };
+
+  /* ---------- 3D ---------- */
+  var viewer = TilesView.create($('tv'), model, {
+    onReady: function () { var l = $('loading'); if (l) l.remove(); }
+  });
+  if (viewer.ok) $('stChip').hidden = false;
+  else document.querySelectorAll('.st-views,.st-ctl,.st-hint').forEach(function (el) { el.hidden = true; });
+  if (TilesView.COARSE) $('stHint').textContent = '单指旋转 · 双指缩放';
+  viewer.onInteract = function () { $('stHint').style.opacity = '0'; };
+
+  /* ---------- 渲染面板 ---------- */
+  function stageOf(i) { return model.stages[P[i].stage]; }
+  function render(animate, prevK) {
+    var full = state.mode === 'full', k = state.k, p = P[k - 1], st = stageOf(k - 1);
+    $('modeFull').classList.toggle('on', full);
+    $('modeSteps').classList.toggle('on', !full);
+    $('modeFull').setAttribute('aria-selected', full);
+    $('modeSteps').setAttribute('aria-selected', !full);
+    $('fullCard').hidden = !full;
+    $('stepCard').hidden = full;
+    $('recBtn').hidden = !viewer.ok;
+    $('startBtn').textContent = saved && state.k > 1 ? '继续第 ' + state.k + ' 步' : '开始分步搭建';
+    $('stChipText').innerHTML = full ? '完整造型 · <b>' + N + '</b> 片' : '第 <b>' + k + '</b> / ' + N + ' 片';
+
+    if (!full) {
+      var si = P[k - 1].stage;
+      $('scStage').innerHTML = '阶段 ' + (si + 1) + '/' + model.stages.length + ' · <b>' + C.esc(st.title) + '</b>';
+      $('scNow').textContent = k;
+      var pr = $('prog');
+      pr.value = k;
+      pr.style.setProperty('--p', (N > 1 ? (k - 1) / (N - 1) * 100 : 100) + '%');
+      $('pieceLine').innerHTML = C.typeIcon(p.type, p.color, 22) + '<span>第 ' + k + ' 片：<b>' + C.pieceLabel(p) + '</b></span>' +
+        (p.cantilever ? '<span class="warn">单边吸住 · 需扶稳</span>' : '');
+      $('scText').innerHTML = C.esc(p.text) + (k === N ? '<br><span class="sc-done">✓ 全部 ' + N + ' 片完成，造型搭好啦！</span>' : '');
+      $('prevBtn').disabled = k <= 1;
+      $('nextBtn').disabled = k >= N;
+      var used = C.countPieces(P, k).total;
+      $('usedInfo').textContent = '已用 ' + used + ' / ' + N + ' 片';
+    }
+    $('playBtn').innerHTML = state.playing ? ICON.pause + '暂停' : ICON.play + (state.k >= N && !full ? '从头演示' : '自动演示');
+    $('playBtn').classList.toggle('playing', state.playing);
+    $('playBtn').setAttribute('aria-label', state.playing ? '暂停自动演示' : '开始自动演示');
+    document.querySelectorAll('.speed [data-sp]').forEach(function (b) { b.classList.toggle('on', +b.dataset.sp === state.speed); });
+    $('ghostChk').checked = state.ghost;
+    renderStages();
+    renderMats();
+    viewer.set({ mode: state.mode, upto: state.k, ghost: state.ghost }, animate && prevK === state.k - 1);
+  }
+
+  function renderStages() {
+    var full = state.mode === 'full', cur = P[state.k - 1].stage;
+    $('stages').innerHTML = model.stages.map(function (s, i) {
+      var cls = full ? '' : (i < cur ? 'done' : i === cur ? 'cur' : '');
+      return '<li class="' + cls + '"><button type="button" data-st="' + i + '">' +
+        '<span class="no">' + (cls === 'done' ? '✓' : i + 1) + '</span>' +
+        '<span class="t">' + C.esc(s.title) + '<span class="d">' + C.esc(s.desc) + '</span></span>' +
+        '<span class="r">第 ' + (s.from + 1) + (s.to > s.from ? '–' + (s.to + 1) : '') + ' 片</span></button></li>';
+    }).join('');
+  }
+
+  function renderMats() {
+    var full = state.mode === 'full', cur = P[state.k - 1];
+    var mr = C.materialRows(model, full ? N : state.k);
+    $('mats').innerHTML = mr.rows.map(function (r) {
+      var now = !full && r.type === cur.type && r.color === cur.color;
+      var pct = Math.round(r.used / r.need * 100);
+      return '<li class="' + (now ? 'now' : '') + '">' + C.typeIcon(r.type, r.color, 24) +
+        '<span><span class="nm">' + C.COLORS[r.color].name + C.TYPES[r.type].name + '</span>' +
+        (full ? '' : '<span class="bar"><i style="width:' + pct + '%"></i></span>') + '</span>' +
+        '<span class="ct">' + (full ? '× <b>' + r.need + '</b>' : '<b>' + r.used + '</b> / ' + r.need) + '</span></li>';
+    }).join('');
+    $('matCount').textContent = full ? '共 ' + N + ' 片' : '已用 ' + mr.used.total + ' / ' + N + ' 片';
+  }
+
+  /* ---------- 操作 ---------- */
+  var saveT = 0;
+  function persist() {
+    clearTimeout(saveT);
+    saveT = setTimeout(function () { C.saveProgress(model.id, state.k, N); saved = C.getProgress(model.id); }, 250);
+  }
+  function go(n, animate) {
+    n = Math.max(1, Math.min(N, n));
+    var prev = state.mode === 'steps' ? state.k : -1;
+    state.k = n;
+    state.mode = 'steps';
+    render(animate, prev);
+    persist();
+  }
+  function setMode(m) {
+    if (m === state.mode) return;
+    stop();
+    state.mode = m;
+    render(false);
+    if (m === 'steps') persist();
+  }
+
+  var timer = 0;
+  function interval() { return Math.round(1700 / state.speed); }
+  function tick() {
+    if (!state.playing) return;
+    if (state.k >= N) { stop(); return; }
+    go(state.k + 1, true);
+    if (state.k >= N) { stop(); return; }
+    timer = setTimeout(tick, interval());
+  }
+  function play() {
+    if (state.mode !== 'steps' || state.k >= N) { state.mode = 'steps'; go(1, false); }
+    state.playing = true;
+    render(false);
+    clearTimeout(timer);
+    timer = setTimeout(tick, Math.min(700, interval()));
+  }
+  function stop() {
+    clearTimeout(timer);
+    if (!state.playing) return;
+    state.playing = false;
+    render(false);
+  }
+
+  $('modeFull').onclick = function () { setMode('full'); };
+  $('modeSteps').onclick = function () { setMode('steps'); };
+  $('startBtn').onclick = function () { stop(); go(state.k, false); };
+  $('prevBtn').onclick = function () { stop(); go(state.k - 1, false); };
+  $('nextBtn').onclick = function () { stop(); go(state.k + 1, true); };
+  $('restartBtn').onclick = function () { stop(); go(1, false); };
+  $('playBtn').onclick = function () { if (state.playing) stop(); else play(); };
+  $('prog').addEventListener('input', function () { stop(); go(+this.value, false); });
+  $('ghostChk').onchange = function () { state.ghost = this.checked; C.store.set('tiles:ghost', state.ghost); viewer.set({ ghost: state.ghost }); };
+  document.querySelectorAll('.speed [data-sp]').forEach(function (b) {
+    b.onclick = function () {
+      state.speed = +b.dataset.sp;
+      C.store.set('tiles:speed', state.speed);
+      render(false);
+      if (state.playing) { clearTimeout(timer); timer = setTimeout(tick, interval()); }
+    };
+  });
+  $('stages').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-st]');
+    if (!b) return;
+    stop();
+    go(model.stages[+b.dataset.st].from + 1, false);
+    if (!desktop.matches) window.scrollTo({ top: 0, behavior: TilesView.REDUCED ? 'auto' : 'smooth' });
+  });
+  document.querySelectorAll('[data-view]').forEach(function (b) { b.onclick = function () { viewer.view(b.dataset.view); }; });
+  $('zIn').onclick = function () { viewer.zoom(1); };
+  $('zOut').onclick = function () { viewer.zoom(-1); };
+  $('zReset').onclick = function () { viewer.reset(); };
+  $('recBtn').onclick = function () {
+    if (state.mode === 'full') { viewer.recommended(model.view); return; }
+    var p = P[state.k - 1];
+    viewer.recommended(p.view || stageOf(state.k - 1).view || model.view);
+  };
+  function syncFav() {
+    var on = C.isFav(model.id);
+    $('favBtn').classList.toggle('on', on);
+    $('favBtn').setAttribute('aria-pressed', on);
+    $('favBtn').querySelector('span').textContent = on ? '已收藏' : '收藏';
+  }
+  $('favBtn').onclick = function () { C.toggleFav(model.id); syncFav(); };
+  syncFav();
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target.closest && e.target.closest('input,textarea,select')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); stop(); go(state.k + 1, true); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); stop(); go(state.k - 1, false); }
+    else if (e.key === ' ' && (e.target === document.body || e.target.classList.contains('tv-canvas'))) {
+      e.preventDefault();
+      if (state.playing) stop(); else play();
+    }
+  });
+  // 页面隐藏时暂停自动演示
+  document.addEventListener('visibilitychange', function () { if (document.hidden) stop(); });
+
+  // 阶段与材料：桌面默认展开，手机默认折叠（保留展开入口）
+  function syncDetails() {
+    $('stageSect').open = desktop.matches;
+    $('matSect').open = desktop.matches;
+  }
+  syncDetails();
+  desktop.addEventListener && desktop.addEventListener('change', syncDetails);
+
+  render(false);
+  // 记录最近浏览（继续搭建入口依赖 progress，只看不搭不写入进度）
+  C.store.set(C.KEYS.last, { id: model.id, ts: Date.now() });
+  window.__tiles = { model: model, state: state, viewer: viewer, go: go, setMode: setMode, play: play, stop: stop };
+})();
+</script>
+</body>
+</html>

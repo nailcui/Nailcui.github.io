@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fbf7f0">
+<title>我的磁片 · 磁力片搭建</title>
+<link rel="stylesheet" href="tiles.css">
+<style>
+  .page { max-width: 880px; }
+  .head { padding: 26px 0 4px; }
+  .head h1 { margin: 0; font-size: 28px; }
+  .head p { margin: 6px 0 0; color: var(--ink-2); font-size: 14.5px; line-height: 1.7; }
+  .inv { margin-top: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); overflow: hidden; }
+  .inv-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 18px; border-top: 1px solid var(--line); }
+  .inv-row:first-child { border-top: 0; }
+  .inv-row b { display: block; font-size: 16px; }
+  .inv-row small { color: var(--ink-3); font-size: 12.5px; }
+  .step { display: flex; align-items: center; border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; background: #fff; }
+  .step button { width: 44px; height: 44px; border: 0; background: none; cursor: pointer; font-size: 20px; color: var(--ink-2); touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .step button:hover { background: var(--bg-2); }
+  .step input {
+    width: 64px; height: 44px; border: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); text-align: center;
+    font: inherit; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); outline: none; -moz-appearance: textfield;
+  }
+  .step input::-webkit-outer-spin-button, .step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .step input:focus { background: var(--pri-soft); }
+  .inv-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; background: var(--bg); border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); }
+  .inv-foot button { border: 0; background: none; color: var(--ink-2); cursor: pointer; font-size: 13.5px; padding: 6px 2px; }
+  .inv-foot button:hover { color: var(--coral); }
+  .res { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .res li { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 12px 16px 12px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+  .res .mc-thumb { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .res b { font-size: 16px; }
+  .res .need { margin-top: 3px; font-size: 13px; color: var(--ink-3); }
+  .stat { display: inline-block; margin-top: 7px; padding: 2px 10px; border-radius: 999px; font-size: 13px; line-height: 1.7; }
+  .stat.ok { background: var(--pri-soft); color: var(--pri-d); }
+  .stat.no { background: #fde9e4; color: #b2402d; }
+  .stat.na { background: var(--bg-2); color: var(--ink-3); }
+  @media (max-width: 560px) {
+    .head h1 { font-size: 24px; }
+    .inv-row { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; padding: 12px 14px; }
+    .inv-row small { display: block; }
+    .step button { width: 40px; }
+    .step input { width: 52px; }
+    .res li { grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 10px; }
+    .res .go { grid-column: 1 / -1; justify-self: stretch; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="11" width="13" height="13" rx="2.5" fill="#ee6a55" fill-opacity=".3" stroke="#ee6a55" stroke-width="2"/><rect x="10" y="4" width="13" height="13" rx="2.5" fill="#f2ac2a" fill-opacity=".3" stroke="#f2ac2a" stroke-width="2"/><rect x="16" y="14" width="13" height="13" rx="2.5" fill="#0e9f8e" fill-opacity=".26" stroke="#0e9f8e" stroke-width="2"/></svg>
+      <span><b>磁力片搭建</b><small>亲子 3D 搭建指南</small></span>
+    </a>
+    <nav class="nav">
+      <a href="library.html">造型库</a>
+      <a class="on" href="mytiles.html" aria-current="page">我的磁片</a>
+      <a class="home" href="../" title="回到博客主页">←<span> 主页</span></a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap page">
+  <div class="head">
+    <h1>我的磁力片</h1>
+    <p>按形状记下家里各有多少片，就能看出哪些造型材料够用。这里只按形状统计——某种颜色不够时，换成同形状的其它颜色也能搭。</p>
+  </div>
+  <section class="inv" aria-label="库存数量">
+    <div id="rows"></div>
+    <div class="inv-foot"><span id="saved">数量只保存在这台设备上</span><button type="button" id="clear">全部清零</button></div>
+  </section>
+  <div class="sec-h"><h2>能搭哪些造型</h2><p id="sumText"></p></div>
+  <ul class="res" id="res"></ul>
+</main>
+<footer class="foot">
+  <a href="./">磁力片搭建首页</a> · <a href="library.html">造型库</a> · <a href="../">博客主页</a>
+</footer>
+
+<script src="three.min.js"></script>
+<script src="tiles-core.js"></script>
+<script src="tiles-models.js"></script>
+<script src="tiles3d.js"></script>
+<script src="tiles-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = TilesCore, M = TilesModels, UI = TilesUI, $ = function (id) { return document.getElementById(id); };
+  var inv = UI.getInv() || {};
+  var MAX = 999;
+
+  $('rows').innerHTML = C.TYPE_ORDER.map(function (t) {
+    return '<div class="inv-row">' + C.typeIcon(t, null, 34) +
+      '<div><b>' + C.TYPES[t].name + '</b><small>' + C.TYPES[t].size + '</small></div>' +
+      '<div class="step"><button type="button" data-d="-1" data-t="' + t + '" aria-label="' + C.TYPES[t].name + '减一">−</button>' +
+      '<input type="number" inputmode="numeric" min="0" max="' + MAX + '" id="n-' + t + '" aria-label="' + C.TYPES[t].name + '数量" value="' + (inv[t] || 0) + '">' +
+      '<button type="button" data-d="1" data-t="' + t + '" aria-label="' + C.TYPES[t].name + '加一">+</button></div></div>';
+  }).join('');
+
+  function hasAny() { return C.TYPE_ORDER.some(function (t) { return (inv[t] || 0) > 0; }); }
+  var st = 0;
+  function save() {
+    C.store.set(C.KEYS.inv, hasAny() ? inv : null);
+    $('saved').textContent = '已保存在这台设备上';
+    clearTimeout(st);
+    st = setTimeout(function () { $('saved').textContent = '数量只保存在这台设备上'; }, 1600);
+  }
+
+  function renderRes() {
+    var any = hasAny(), okN = 0;
+    $('res').innerHTML = M.list.map(function (m) {
+      var r = UI.check(m, inv), stat;
+      if (!any) stat = '<span class="stat na">填写数量后显示</span>';
+      else if (r.ok) { okN++; stat = '<span class="stat ok">✓ 材料充足</span>'; }
+      else stat = '<span class="stat no">还差 ' + r.miss.map(function (x) { return C.TYPES[x.type].name + ' ' + x.n + ' 片'; }).join('、') + '</span>';
+      return '<li><div class="mc-thumb" data-thumb="' + m.id + '"><span class="ph" aria-hidden="true">🧩</span></div>' +
+        '<div><b>' + C.esc(m.name) + '</b><div class="need">需要 ' + UI.needText(m) + '（共 ' + m.pieces.length + ' 片）</div>' + stat + '</div>' +
+        '<a class="btn btn-ghost go" href="build.html?id=' + m.id + '">去搭建</a></li>';
+    }).join('');
+    $('sumText').textContent = any ? '材料够搭 ' + okN + ' / ' + M.list.length + ' 款' : '共 ' + M.list.length + ' 款';
+    UI.loadThumbs($('res'));
+  }
+
+  function setN(t, n) {
+    n = Math.max(0, Math.min(MAX, Math.round(+n || 0)));
+    inv[t] = n;
+    $('n-' + t).value = n;
+    save();
+    renderRes();
+  }
+  $('rows').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-d]');
+    if (b) setN(b.dataset.t, (inv[b.dataset.t] || 0) + (+b.dataset.d));
+  });
+  $('rows').addEventListener('input', function (e) {
+    if (e.target.id && e.target.id.indexOf('n-') === 0) {
+      var t = e.target.id.slice(2);
+      inv[t] = Math.max(0, Math.min(MAX, Math.round(+e.target.value || 0)));
+      save();
+      renderRes();
+    }
+  });
+  $('rows').addEventListener('change', function (e) {
+    if (e.target.id && e.target.id.indexOf('n-') === 0) setN(e.target.id.slice(2), e.target.value);
+  });
+  $('clear').onclick = function () {
+    C.TYPE_ORDER.forEach(function (t) { inv[t] = 0; $('n-' + t).value = 0; });
+    save();
+    renderRes();
+  };
+  renderRes();
+})();
+</script>
+</body>
+</html>
