@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf6ee">
+<title>作品库 · 阿基米德积木</title>
+<link rel="stylesheet" href="blocks.css">
+<style>
+  .head { margin: 30px 0 18px; }
+  .head h1 { margin: 0 0 6px; font-size: 26px; }
+  .head p { margin: 0; color: var(--ink-3); font-size: 14px; }
+  .head p a { color: var(--pri-d); }
+  .filters { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+  .row { display: flex; gap: 8px; align-items: center; overflow-x: auto; padding-bottom: 2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .row::-webkit-scrollbar { display: none; }
+  .row-label { flex: none; font-size: 13px; color: var(--ink-3); padding-right: 2px; }
+  .search {
+    display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px;
+    border: 1px solid var(--line-2); border-radius: 12px; background: var(--card); max-width: 420px;
+  }
+  .search svg { width: 18px; height: 18px; color: var(--ink-3); flex: none; }
+  .search input { border: 0; outline: none; background: none; font: inherit; color: var(--ink); width: 100%; min-width: 0; }
+  .bar { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; font-size: 13.5px; color: var(--ink-3); }
+  .bar button { border: 0; background: none; color: var(--pri-d); cursor: pointer; padding: 4px 2px; font-size: 13.5px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2.5" y="23" width="27" height="6" rx="1.6" fill="#d9b98a" stroke="#a97f4c" stroke-width="1.4"/>
+        <rect x="13" y="10" width="6" height="13" rx="1.6" fill="#c9a575" stroke="#a97f4c" stroke-width="1.4"/>
+        <rect x="6.5" y="3.5" width="19" height="6" rx="1.6" fill="#e6cba2" stroke="#a97f4c" stroke-width="1.4"/>
+      </svg>
+      <span><b>阿基米德积木</b><small>创意搭建 · 作品库</small></span>
+    </a>
+    <nav class="nav">
+      <a href="./">首页</a>
+      <a class="home" href="../" title="回到博客主页">←<span> 主页</span></a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="head">
+    <h1>作品库</h1>
+    <p id="sub"></p>
+  </div>
+  <div class="filters">
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input type="search" id="q" placeholder="搜索作品，如「高塔」「桥」" autocomplete="off" aria-label="搜索作品">
+    </label>
+    <div class="row" id="cats" role="group" aria-label="分类"></div>
+    <div class="row" id="levels" role="group" aria-label="难度"></div>
+    <div class="row" id="sizes" role="group" aria-label="木条数量"></div>
+  </div>
+  <div class="bar"><span id="count"></span><button type="button" id="reset" hidden>清除筛选</button></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden></div>
+</main>
+<footer class="foot">
+  所有作品都由同一规格的木条搭成 · 结构为几何校验后的示意，未做实物承重测试<br>
+  <a href="./">积木馆首页</a> · <a href="../">博客主页</a>
+</footer>
+
+<script src="three.min.js"></script>
+<script src="blocks-core.js"></script>
+<script src="blocks-models.js"></script>
+<script src="blocks3d.js"></script>
+<script src="blocks-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = BlocksCore, M = BlocksModels, UI = BlocksUI, $ = function (id) { return document.getElementById(id); };
+  var all = M.list;
+  var SIZES = [
+    { id: 's', name: '20 根以内', test: function (n) { return n <= 20; } },
+    { id: 'm', name: '21–50 根', test: function (n) { return n > 20 && n <= 50; } },
+    { id: 'l', name: '51 根以上', test: function (n) { return n > 50; } }
+  ];
+  var qs = new URLSearchParams(location.search);
+  var f = { q: qs.get('q') || '', cat: qs.get('cat') || '', level: +qs.get('level') || 0, size: qs.get('size') || '', fav: qs.get('fav') === '1' };
+
+  $('sub').innerHTML = '共 ' + all.length + ' 件作品，每件都有可旋转的 3D 模型与 ' +
+    Math.min.apply(null, all.map(function (m) { return m.stages.length; })) + '–' +
+    Math.max.apply(null, all.map(function (m) { return m.stages.length; })) + ' 个关键阶段。';
+
+  function chips() {
+    $('cats').innerHTML = '<span class="row-label">分类</span>' +
+      '<button type="button" class="chip' + (!f.cat ? ' on' : '') + '" data-cat="">全部</button>' +
+      C.CAT_ORDER.map(function (t) {
+        var n = all.filter(function (m) { return m.cat === t; }).length;
+        return '<button type="button" class="chip' + (f.cat === t ? ' on' : '') + '" data-cat="' + t + '">' +
+          C.CATS[t].icon + ' ' + C.CATS[t].name + ' <span class="n">' + (n || '筹备中') + '</span></button>';
+      }).join('');
+    $('levels').innerHTML = '<span class="row-label">难度</span>' +
+      '<button type="button" class="chip' + (!f.level ? ' on' : '') + '" data-level="0">全部</button>' +
+      [1, 2, 3].map(function (l) {
+        return '<button type="button" class="chip' + (f.level === l ? ' on' : '') + '" data-level="' + l + '">' + C.LEVELS[l] + '</button>';
+      }).join('');
+    $('sizes').innerHTML = '<span class="row-label">木条数</span>' +
+      '<button type="button" class="chip' + (!f.size ? ' on' : '') + '" data-size="">不限</button>' +
+      SIZES.map(function (s) {
+        return '<button type="button" class="chip' + (f.size === s.id ? ' on' : '') + '" data-size="' + s.id + '">' + s.name + '</button>';
+      }).join('') +
+      '<button type="button" class="chip' + (f.fav ? ' on' : '') + '" data-favonly="1" aria-pressed="' + f.fav + '">' + UI.HEART + '只看收藏</button>';
+  }
+
+  function match(m) {
+    var q = f.q.trim().toLowerCase();
+    if (q && (m.name + m.intro + C.CATS[m.cat].name + m.notes.join('')).toLowerCase().indexOf(q) < 0) return false;
+    if (f.cat && m.cat !== f.cat) return false;
+    if (f.level && m.level !== f.level) return false;
+    if (f.size) {
+      var s = SIZES.filter(function (x) { return x.id === f.size; })[0];
+      if (s && !s.test(m.count)) return false;
+    }
+    if (f.fav && !C.isFav(m.id)) return false;
+    return true;
+  }
+
+  function render() {
+    chips();
+    var list = all.filter(match);
+    var filtered = f.q || f.cat || f.level || f.size || f.fav;
+    $('count').textContent = filtered ? '找到 ' + list.length + ' 件' : '全部 ' + list.length + ' 件';
+    $('reset').hidden = !filtered;
+    $('grid').innerHTML = list.map(function (m) { return UI.card(m); }).join('');
+    $('grid').hidden = !list.length;
+    var em = $('empty');
+    em.hidden = !!list.length;
+    if (!list.length) {
+      var soon = f.cat && !all.some(function (m) { return m.cat === f.cat; });
+      em.innerHTML = soon
+        ? '<h3>' + C.CATS[f.cat].name + '分类正在设计中</h3><p>每件作品都要先用同一规格的木条验证能搭得起来，再放进作品库。先看看已有的作品吧。</p>'
+        : '<h3>没有找到符合条件的作品</h3><p>换个关键词，或者放宽难度、木条数量筛选试试。</p>';
+      em.innerHTML += '<button type="button" class="btn btn-ghost" id="reset2">清除筛选</button>';
+      $('reset2').onclick = reset;
+    }
+    UI.loadThumbs($('grid'));
+    // 同步地址栏，方便分享与返回
+    var p = new URLSearchParams();
+    if (f.q) p.set('q', f.q);
+    if (f.cat) p.set('cat', f.cat);
+    if (f.level) p.set('level', f.level);
+    if (f.size) p.set('size', f.size);
+    if (f.fav) p.set('fav', '1');
+    history.replaceState(null, '', location.pathname + (p.toString() ? '?' + p : ''));
+  }
+  function reset() { f = { q: '', cat: '', level: 0, size: '', fav: false }; $('q').value = ''; render(); }
+
+  $('q').value = f.q;
+  var qt = 0;
+  $('q').addEventListener('input', function () {
+    var v = this.value;
+    clearTimeout(qt);
+    qt = setTimeout(function () { f.q = v; render(); }, 160);
+  });
+  document.querySelector('.filters').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    if ('cat' in b.dataset) f.cat = b.dataset.cat;
+    else if ('level' in b.dataset) f.level = +b.dataset.level;
+    else if ('size' in b.dataset) f.size = b.dataset.size;
+    else if (b.dataset.favonly) f.fav = !f.fav;
+    else return;
+    render();
+  });
+  $('reset').onclick = reset;
+  UI.bindFavs($('grid'), function () { if (f.fav) render(); });
+  // 从详情页返回（往返缓存）时刷新收藏
+  window.addEventListener('pageshow', function (e) { if (e.persisted) render(); });
+  render();
+})();
+</script>
+</body>
+</html>

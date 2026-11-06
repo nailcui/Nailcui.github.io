@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#faf6ee">
+<meta name="description" content="阿基米德积木创意搭建：用同一规格的原木条搭出高塔、桥梁和小建筑，旋转观察立体结构，对照关键阶段在桌上复刻。">
+<title>阿基米德积木 · 一根木条，无限想象</title>
+<link rel="stylesheet" href="blocks.css">
+<style>
+  .resume {
+    display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 12px 16px;
+    border: 1px solid var(--line); border-radius: var(--r); background: var(--card); position: relative;
+  }
+  .resume .rc-thumb {
+    width: 86px; height: 64px; flex: none; border-radius: 10px; overflow: hidden; border: 1px solid var(--line);
+    background: radial-gradient(120% 92% at 50% 32%, #fffdf8 0%, #f4ecdc 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .resume .rc-thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .resume .rc-body { min-width: 0; flex: 1; }
+  .resume .rc-k { font-size: 12.5px; color: var(--pri-d); font-weight: 600; }
+  .resume .rc-name { font-weight: 650; font-size: 16px; margin-top: 1px; }
+  .resume .rc-meta { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="2.5" y="23" width="27" height="6" rx="1.6" fill="#d9b98a" stroke="#a97f4c" stroke-width="1.4"/>
+        <rect x="13" y="10" width="6" height="13" rx="1.6" fill="#c9a575" stroke="#a97f4c" stroke-width="1.4"/>
+        <rect x="6.5" y="3.5" width="19" height="6" rx="1.6" fill="#e6cba2" stroke="#a97f4c" stroke-width="1.4"/>
+      </svg>
+      <span><b>阿基米德积木</b><small>创意搭建 · 作品库</small></span>
+    </a>
+    <nav class="nav">
+      <a href="library.html">作品库</a>
+      <a class="home" href="../" title="回到博客主页">←<span> 主页</span></a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- 首屏：文字 + 可交互代表作品（手机上模型在最上面） -->
+  <section class="hero" aria-label="代表性作品">
+    <div class="hero-txt">
+      <p class="kicker">阿基米德积木 · 创意搭建</p>
+      <h1>一根木条，<br>无限想象</h1>
+      <p class="sub">全部作品只用同一规格的原木条——不切割、不粘接，靠平放、侧立与交错叠放，撑起高塔、桥梁和小建筑。旋转观察每一件的立体结构，对照几个关键阶段，在桌上照着搭。</p>
+      <div class="hero-btns">
+        <a class="btn" href="library.html">探索作品</a>
+        <a class="btn btn-ghost" href="build.html?id=tower">看看这座高塔</a>
+      </div>
+    </div>
+    <div class="hero-bv">
+      <div class="bv" id="heroBv"><div class="bv-loading" id="heroLoading">正在准备 3D 模型…</div></div>
+      <div class="bv-tools">
+        <button type="button" class="mini-ctl" id="rotBtn" aria-pressed="false" title="自动旋转">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>自动旋转
+        </button>
+      </div>
+      <p class="bv-hint" id="heroHint">拖动旋转 · 滚轮或双指缩放</p>
+    </div>
+  </section>
+
+  <!-- 主题分类 -->
+  <section aria-label="主题分类">
+    <div class="cat-row" id="cats"></div>
+  </section>
+
+  <!-- 规格说明 -->
+  <aside class="spec-strip" aria-label="木条规格">
+    <span class="ruler" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span><b>木条规格：</b>长 × 宽 × 厚 = 15 : 3 : 1，按 120 × 24 × 8 mm 建模。这是本项目选定的规格，并非所有品牌的统一标准；比例相同即可按木条数量照搭。不使用胶水与连接件。</span>
+  </aside>
+
+  <!-- 继续查看 -->
+  <section id="resumeSec" hidden aria-label="继续查看">
+    <div class="sec-h"><h2>继续查看</h2></div>
+    <a class="resume" id="resumeCard" href="#">
+      <span class="rc-thumb" id="rcThumb"><span aria-hidden="true">🪵</span></span>
+      <span class="rc-body">
+        <span class="rc-k">上次看到</span>
+        <span class="rc-name" id="rcName"></span>
+        <span class="rc-meta" id="rcMeta"></span>
+      </span>
+      <span class="btn btn-ghost" style="min-height:38px;padding:0 14px;">打开 →</span>
+    </a>
+  </section>
+
+  <!-- 精选作品 -->
+  <section aria-label="精选作品">
+    <div class="sec-h"><h2>精选作品</h2><a href="library.html">全部作品 →</a></div>
+    <div class="grid cols3" id="featured"></div>
+  </section>
+
+  <!-- 入门作品 -->
+  <section aria-label="入门作品">
+    <div class="sec-h"><h2>入门先搭这些</h2><p>木条少、层层平放叠齐，适合第一次上手</p></div>
+    <div class="grid" id="starters"></div>
+  </section>
+</main>
+
+<footer class="foot">
+  所有作品由同一规格的木条搭成 · 已做几何相交与承托关系检查，未做物理仿真或实物承重测试 · 请以实物搭建为准<br>
+  <a href="library.html">作品库</a> · <a href="../">博客主页</a>
+</footer>
+
+<script src="three.min.js"></script>
+<script src="blocks-core.js"></script>
+<script src="blocks-models.js"></script>
+<script src="blocks3d.js"></script>
+<script src="blocks-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = BlocksCore, M = BlocksModels, UI = BlocksUI, $ = function (id) { return document.getElementById(id); };
+
+  /* 主题分类 */
+  $('cats').innerHTML = C.CAT_ORDER.map(function (t) {
+    var cat = C.CATS[t], n = M.list.filter(function (m) { return m.cat === t; }).length;
+    return '<a class="cat-card" href="library.html?cat=' + t + '"><span class="ico">' + cat.icon + '</span><b>' + cat.name +
+      '</b><span>' + cat.blurb + ' · ' + n + ' 件</span></a>';
+  }).join('');
+
+  /* 精选 / 入门 */
+  var featured = M.list.filter(function (m) { return m.featured; });
+  $('featured').innerHTML = featured.map(function (m) { return UI.card(m); }).join('');
+  var starters = M.list.filter(function (m) { return m.starter; });
+  $('starters').innerHTML = starters.map(function (m) {
+    return UI.card(m, { text: m.count + ' 根 · 入门' });
+  }).join('');
+  UI.bindFavs(document.body);
+  UI.loadThumbs($('featured'));
+  UI.loadThumbs($('starters'));
+
+  /* 继续查看 */
+  var last = UI.lastViewed();
+  if (last) {
+    $('resumeSec').hidden = false;
+    $('resumeCard').href = 'build.html?id=' + last.m.id + (last.stage != null ? '&stage=' + last.stage : '');
+    $('rcName').textContent = last.m.name;
+    $('rcMeta').textContent = C.CATS[last.m.cat].name + ' · ' + last.m.count + ' 根木条 · ' + last.m.stages.length + ' 个关键阶段';
+    var hit = null;
+    try { hit = localStorage.getItem('blocks:thumb:' + last.m.id + ':' + last.m.hash + ':480x360'); } catch (e) { }
+    if (hit) {
+      var img = new Image(); img.alt = ''; img.decoding = 'async'; img.src = hit;
+      $('rcThumb').innerHTML = ''; $('rcThumb').appendChild(img);
+    } else {
+      $('rcThumb').dataset.thumb = last.m.id;
+      UI.loadThumbs($('resumeSec'));
+    }
+  }
+
+  /* 首屏代表作品：凌云叠塔（默认静止，可开自动旋转） */
+  var hero = BlocksView.create($('heroBv'), M.get('tower'), { fov: 26, onReady: function () { var l = $('heroLoading'); if (l) l.remove(); } });
+  if (BlocksView.COARSE) $('heroHint').textContent = '单指旋转 · 双指缩放';
+  $('rotBtn').onclick = function () {
+    var on = this.getAttribute('aria-pressed') !== 'true';
+    this.setAttribute('aria-pressed', on);
+    this.style.color = on ? 'var(--pri-d)' : '';
+    this.style.borderColor = on ? 'var(--pri)' : '';
+    hero.setAutoRotate(on);
+  };
+})();
+</script>
+</body>
+</html>
