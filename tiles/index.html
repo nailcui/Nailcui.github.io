@@ -230,8 +230,8 @@
       : '<div class="theme t-' + t + ' soon" aria-disabled="true">' + inner + '</div>';
   }).join('');
 
-  // 精选（按难度从高到低展示全部现有造型）与入门推荐
-  var featured = all.slice().sort(function (a, b) { return b.level - a.level || b.pieces.length - a.pieces.length; });
+  // 精选：按难度从高到低取前 6 款（全部造型见造型库），另配一款入门推荐
+  var featured = all.slice().sort(function (a, b) { return b.level - a.level || b.pieces.length - a.pieces.length; }).slice(0, 6);
   $('featured').innerHTML = featured.map(UI.card).join('');
   var st = M.get('house');
   $('starter').href = 'build.html?id=' + st.id;

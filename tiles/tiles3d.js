@@ -467,7 +467,10 @@
     var camera = new THREE.PerspectiveCamera(opts.fov || 30, 1, 0.05, 400);
     var dv = model.view || { az: 30, el: 24 };
     var fitViews = orbitViews(dv);
-    var st = { az: dv.az * DEG, el: dv.el * DEG, zoom: 1 };   // zoom = 相对「完整入镜距离」的倍数
+    // zoom = 相对「任意角度都完整入镜」距离的倍数。默认视角用 zoom0：在保证默认视角完整入镜的前提下尽量饱满
+    // （细长造型如火车在默认角度下不必按最刁钻的角度留白）；自转展示时保持 1，转到哪个角度都不裁切
+    var zoom0 = 1, touched = false;
+    var st = { az: dv.az * DEG, el: dv.el * DEG, zoom: 1 };
     var fit = 10, w = 1, h = 1;
 
     // 高亮：当前零件的轮廓（可见部分实线 + 被遮挡部分淡线）
@@ -494,6 +497,11 @@
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       fit = fitDistance(model, center, fitViews, camera.fov, camera.aspect, opts.margin || 1.05);
+      if (!opts.autoRotate) {
+        var own = fitDistance(model, center, [[dv.az * DEG, dv.el * DEG]], camera.fov, camera.aspect, (opts.margin || 1.05) * 1.04);
+        zoom0 = Math.min(1, Math.max(0.82, own / fit));
+      }
+      if (!touched) st.zoom = zoom0;
       invalidate();
     }
 
@@ -638,6 +646,7 @@
     function clampZoom(z) { return Math.max(0.38, Math.min(2.6, z)); }
     function interacted() {
       tween = null;
+      touched = true;
       autoPauseUntil = performance.now() + 5000;
       if (api.onInteract) api.onInteract();
     }
@@ -751,10 +760,10 @@
       recommended: function (v) {
         interacted();
         v = v || dv;
-        tweenTo(v.az * DEG, v.el * DEG, v.zoom || 1, 700);
+        tweenTo(v.az * DEG, v.el * DEG, v === dv ? zoom0 : (v.zoom || 1), 700);
       },
       zoom: function (dir) { interacted(); tweenTo(st.az, st.el, st.zoom * (dir > 0 ? 0.8 : 1.25), 260); },
-      reset: function () { interacted(); tweenTo(dv.az * DEG, dv.el * DEG, 1, 600); },
+      reset: function () { interacted(); tweenTo(dv.az * DEG, dv.el * DEG, zoom0, 600); },
       getView: function () { return { az: st.az / DEG, el: st.el / DEG, zoom: st.zoom }; },
       setView: function (v) { if (v) { st.az = v.az * DEG; st.el = clampEl(v.el * DEG); st.zoom = clampZoom(v.zoom || 1); invalidate(); } },
       setAutoRotate: function (b) { auto = !!b && !REDUCED; invalidate(); },
